@@ -16,9 +16,9 @@ self.TRIPDOCK_CONFIG = {
 
   // === 2. Web Push VAPID 金鑰（選填，開啟推播通知時需要）===
   // 位置：Firebase Console → 專案設定 → Cloud Messaging → 網路推播憑證
-  vapidKey: "",
+  vapidKey: "BMo3ZvZIeV3V3gO7k7EsrzQPIpxL5ihakHCRthzLHU5-vIgrIUy-BN2GIuFhhi4fG-E1CDmpJHvCmzdTpYnMbK4",
 
   // === 3. GAS 跳板 Web App 網址（第二階段功能：FCM 推播發送與 Google Maps 營業時間自動帶入）===
   // 留空時系統仍可完整運作，僅暫停自動推播與自動抓營業時間
-  gasBridgeUrl: ""
+  gasBridgeUrl: "https://script.google.com/macros/s/AKfycbxMdkobdjccvjLQEOoyUWcVs0yV2eLsKxoNguiN26y0G8WtOmun9cnWC0M1Y2B5KDQ6sQ/exec"
 };

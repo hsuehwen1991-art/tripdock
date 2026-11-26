@@ -115,7 +115,10 @@
       animation: tdViewIn 0.19s cubic-bezier(0.22, 1, 0.36, 1) both;
     }
 
-    /* ===== GPU 加速彈跳視窗動畫（手機 Bottom Sheet / 桌機微縮放淡入） ===== */
+    /* ===== GPU 加速 3D 卡片翻轉居中彈窗動畫（全站彈窗適用） ===== */
+    .td-modal-stage {
+      perspective: 1200px;
+    }
     @keyframes tdBackdropIn {
       from { opacity: 0; }
       to { opacity: 1; }
@@ -124,21 +127,17 @@
       from { opacity: 1; }
       to { opacity: 0; }
     }
-    @keyframes tdSheetUp {
-      from { transform: translateY(100%); }
-      to { transform: translateY(0); }
+    @keyframes tdCardFlipIn {
+      0% { opacity: 0; transform: rotateY(-24deg) scale(0.91); }
+      100% { opacity: 1; transform: rotateY(0deg) scale(1); }
     }
-    @keyframes tdSheetDown {
-      from { transform: translateY(0); }
-      to { transform: translateY(100%); }
+    @keyframes tdCardFlipOut {
+      0% { opacity: 1; transform: rotateY(0deg) scale(1); }
+      100% { opacity: 0; transform: rotateY(16deg) scale(0.92); }
     }
-    @keyframes tdModalPop {
-      from { opacity: 0; transform: scale(0.95) translateY(10px); }
-      to { opacity: 1; transform: scale(1) translateY(0); }
-    }
-    @keyframes tdModalPopOut {
-      from { opacity: 1; transform: scale(1) translateY(0); }
-      to { opacity: 0; transform: scale(0.96) translateY(8px); }
+    @keyframes tdCardFlipSwitch {
+      0% { opacity: 0.25; transform: rotateY(-86deg) scale(0.96); }
+      100% { opacity: 1; transform: rotateY(0deg) scale(1); }
     }
     .td-modal-backdrop-enter {
       animation: tdBackdropIn 0.18s ease-out both;
@@ -146,19 +145,19 @@
     .td-modal-backdrop-exit {
       animation: tdBackdropOut 0.16s ease-in both;
     }
+    .td-modal-panel {
+      transform-style: preserve-3d;
+      backface-visibility: hidden;
+      will-change: transform, opacity;
+    }
     .td-modal-panel-enter {
-      animation: tdSheetUp 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+      animation: tdCardFlipIn 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+    .td-modal-panel-flip {
+      animation: tdCardFlipSwitch 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
     }
     .td-modal-panel-exit {
-      animation: tdSheetDown 0.17s cubic-bezier(0.4, 0, 1, 1) both;
-    }
-    @media (min-width: 640px) {
-      .td-modal-panel-enter {
-        animation: tdModalPop 0.20s cubic-bezier(0.22, 1, 0.36, 1) both;
-      }
-      .td-modal-panel-exit {
-        animation: tdModalPopOut 0.15s ease-in both;
-      }
+      animation: tdCardFlipOut 0.16s ease-in both;
     }
 
     /* ===== 手機版旅行卡片左滑刪除 ===== */

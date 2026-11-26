@@ -85,7 +85,7 @@ function closeModal() {
   if (backdrop && panel) {
     backdrop.classList.remove('td-modal-backdrop-enter');
     backdrop.classList.add('td-modal-backdrop-exit');
-    panel.classList.remove('td-modal-panel-enter');
+    panel.classList.remove('td-modal-panel-enter', 'td-modal-panel-flip');
     panel.classList.add('td-modal-panel-exit');
     clearTimeout(closeModal._timer);
     closeModal._timer = setTimeout(() => {
@@ -586,8 +586,25 @@ function renderTripList() {
     `;
   };
 
+  const pendingDeletions = isAdmin()
+    ? state.allUsers.filter((u) => u.role !== 'admin' && u.deletionRequested === true)
+    : [];
+
   return `
     <div class="space-y-6">
+      ${pendingDeletions.length > 0 ? `
+        <div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5 min-w-0">
+            <i data-lucide="user-x" class="w-5 h-5 text-amber-700 shrink-0"></i>
+            <div class="min-w-0">
+              <p class="text-sm font-bold text-amber-900">有 ${pendingDeletions.length} 筆帳號刪除申請待審核</p>
+              <p class="text-xs text-amber-700 truncate">${esc(pendingDeletions.map((u) => u.displayName || u.email).join('、'))}</p>
+            </div>
+          </div>
+          <button id="btn-open-deletion-review" class="shrink-0 px-3.5 py-2 rounded-xl glass-btn-primary text-xs font-semibold">前往審核</button>
+        </div>
+      ` : ''}
+
       <div class="flex items-center justify-between">
         <div>
           <h2 class="text-lg font-bold text-slate-900">我的旅行</h2>
@@ -1215,11 +1232,19 @@ function renderModal() {
   else if (type === 'itineraryForm') body = renderItineraryFormModalContent(data);
   else if (type === 'expenseForm') body = renderExpenseFormModalContent(data);
   else if (type === 'archive') body = renderArchiveModalContent();
+  else if (type === 'deletionReview') body = renderDeletionReviewModalContent();
 
-  const isFreshOpen = state.lastModalType !== type;
+  const isFreshOpen = !state.lastModalType;
+  const isSwitchFlip = Boolean(state.lastModalType && state.lastModalType !== type);
+  const panelAnimCls = isFreshOpen
+    ? 'td-modal-panel-enter'
+    : isSwitchFlip
+    ? 'td-modal-panel-flip'
+    : '';
+
   return `
-    <div id="modal-backdrop" class="fixed inset-0 z-50 bg-slate-900/45 backdrop-blur-[2px] flex items-end sm:items-center justify-center sm:p-4 ${isFreshOpen ? 'td-modal-backdrop-enter' : ''}">
-      <div id="modal-panel" class="bg-white w-full sm:max-w-xl sm:rounded-3xl rounded-t-3xl max-h-[88vh] flex flex-col shadow-2xl overflow-hidden ${isFreshOpen ? 'td-modal-panel-enter' : ''}">
+    <div id="modal-backdrop" class="fixed inset-0 z-50 bg-slate-900/45 backdrop-blur-[2px] flex items-center justify-center p-3 sm:p-4 td-modal-stage ${isFreshOpen ? 'td-modal-backdrop-enter' : ''}">
+      <div id="modal-panel" class="td-modal-panel bg-white w-full sm:max-w-xl rounded-3xl max-h-[84dvh] flex flex-col shadow-2xl overflow-hidden ${panelAnimCls}">
         ${body}
       </div>
     </div>
@@ -1297,6 +1322,11 @@ function renderPwaModalContent(data) {
 
 /* ----------------------------- Modal: 個人資料與登出 ----------------------------- */
 function renderProfileModalContent() {
+  const pendingCount = isAdmin()
+    ? state.allUsers.filter((u) => u.role !== 'admin' && u.deletionRequested === true).length
+    : 0;
+  const hasDeletionReq = Boolean(state.profile?.deletionRequested);
+
   return `
     ${modalHeader('帳號設定')}
     <div class="p-5 overflow-y-auto space-y-5">
@@ -1304,7 +1334,7 @@ function renderProfileModalContent() {
         <label class="block text-xs font-semibold text-slate-700">顯示名稱</label>
         <div class="flex gap-2">
           <input name="displayName" required value="${esc(state.profile?.displayName || '')}" class="flex-1 px-3 py-2 rounded-xl border border-slate-200 text-sm" />
-          <button type="submit" class="px-4 py-2 rounded-xl bg-teal-600 text-white text-xs font-semibold">更新</button>
+          <button type="submit" class="px-4 py-2 rounded-xl glass-btn-primary text-xs font-semibold">更新</button>
         </div>
       </form>
 
@@ -1315,10 +1345,97 @@ function renderProfileModalContent() {
         <button type="submit" class="px-4 py-2 rounded-xl bg-slate-800 text-white text-xs font-semibold">變更密碼</button>
       </form>
 
+      ${isAdmin() ? `
+        <div class="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+          <div>
+            <p class="text-xs font-semibold text-slate-700">成員帳號刪除審核</p>
+            <p class="text-[11px] text-slate-500 mt-0.5">${pendingCount > 0 ? `目前有 ${pendingCount} 筆待審核申請` : '目前沒有待審核的刪除申請'}</p>
+          </div>
+          <button id="btn-profile-deletion-review" class="px-3.5 py-2 rounded-xl ${pendingCount > 0 ? 'glass-btn-primary' : 'glass-btn-subtle'} text-xs font-semibold shrink-0">
+            檢視審核${pendingCount > 0 ? ` ${pendingCount}` : ''}
+          </button>
+        </div>
+      ` : `
+        <div class="pt-3 border-t border-slate-100 space-y-2.5">
+          ${hasDeletionReq ? `
+            <div class="p-3.5 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-xs font-bold text-amber-900">已送出刪除帳號申請</p>
+                <p class="text-[11px] text-amber-700 mt-0.5">等待管理員確認帳務並審核移除</p>
+              </div>
+              <button id="btn-cancel-deletion" class="shrink-0 px-3 py-1.5 rounded-xl bg-white border border-amber-300 text-amber-900 text-xs font-semibold">取消申請</button>
+            </div>
+          ` : `
+            <div class="flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-xs font-semibold text-rose-700">刪除帳號</p>
+                <p class="text-[11px] text-slate-500 mt-0.5">送出後將通知管理員審核移除</p>
+              </div>
+              <button id="btn-request-deletion" class="shrink-0 px-3.5 py-2 rounded-xl glass-btn-danger text-xs font-semibold">申請刪除帳號</button>
+            </div>
+          `}
+        </div>
+      `}
+
       <div class="pt-3 border-t border-slate-100 flex items-center justify-between">
-        <span class="text-xs text-slate-500">${esc(state.profile?.email)}｜${isAdmin() ? '管理員' : '一般成員'}</span>
-        <button id="btn-logout" class="px-3.5 py-2 rounded-xl bg-rose-50 text-rose-700 hover:bg-rose-100 text-xs font-semibold">登出</button>
+        <span class="text-xs text-slate-500 truncate">${esc(state.profile?.email)}｜${isAdmin() ? '管理員' : '一般成員'}</span>
+        <button id="btn-logout" class="shrink-0 px-3.5 py-2 rounded-xl bg-rose-50 text-rose-700 hover:bg-rose-100 text-xs font-semibold">登出</button>
       </div>
+    </div>
+  `;
+}
+
+/* ----------------------------- Modal: 管理員審核刪除帳號 ----------------------------- */
+function renderDeletionReviewModalContent() {
+  const pending = state.allUsers.filter((u) => u.role !== 'admin' && u.deletionRequested === true);
+
+  return `
+    ${modalHeader('帳號刪除審核')}
+    <div class="p-5 overflow-y-auto space-y-4">
+      ${pending.length === 0 ? `
+        <div class="py-8 text-center space-y-1.5">
+          <p class="text-sm font-semibold text-slate-700">目前沒有待審核的刪除申請</p>
+          <p class="text-xs text-slate-400">一般成員提出申請時會透過推播通知你</p>
+        </div>
+      ` : pending.map((u) => {
+        const settlingTrips = state.trips.filter(
+          (t) => t.status === 'settling' && (t.activeMemberIds || []).includes(u.id)
+        );
+        const activeTrips = state.trips.filter(
+          (t) => t.status === 'active' && (t.activeMemberIds || []).includes(u.id)
+        );
+
+        return `
+          <div class="p-4 rounded-2xl border border-slate-200 bg-slate-50/70 space-y-3">
+            <div>
+              <p class="text-sm font-bold text-slate-900">${esc(u.displayName || '成員')}</p>
+              <p class="text-xs text-slate-500 mt-0.5">${esc(u.email)}</p>
+            </div>
+
+            ${settlingTrips.length > 0 ? `
+              <div class="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 space-y-1">
+                <p class="font-bold">尚有結帳收款中的旅行，建議確認帳務結清後再移除</p>
+                <p>${esc(settlingTrips.map((t) => t.name).join('、'))}</p>
+              </div>
+            ` : ''}
+
+            ${activeTrips.length > 0 ? `
+              <div class="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
+                進行中旅行：${esc(activeTrips.map((t) => t.name).join('、'))}
+              </div>
+            ` : ''}
+
+            <p class="text-[11px] text-slate-500 leading-relaxed">
+              核准後會徹底刪除該登入帳號，並自各旅行歸戶名單移出，歷史足跡與封存帳務仍會保留其舊顯示名稱。
+            </p>
+
+            <div class="flex items-center justify-end gap-2 pt-1">
+              <button data-review-deletion="reject" data-target-uid="${esc(u.id)}" class="px-3.5 py-2 rounded-xl glass-btn-subtle text-xs font-semibold">駁回申請</button>
+              <button data-review-deletion="approve" data-target-uid="${esc(u.id)}" class="px-3.5 py-2 rounded-xl glass-btn-danger text-xs font-semibold">核准移除</button>
+            </div>
+          </div>
+        `;
+      }).join('')}
     </div>
   `;
 }
@@ -1994,7 +2111,12 @@ function bindGlobalEvents() {
     render();
   });
 
-  // 首頁建立與進入旅行
+  // 首頁刪除帳號審核提醒、建立與進入旅行
+  document.getElementById('btn-open-deletion-review')?.addEventListener('click', async () => {
+    await loadAllUsersIfAdmin();
+    state.modal = { type: 'deletionReview', data: {} };
+    render();
+  });
   document.getElementById('btn-create-trip')?.addEventListener('click', () => {
     state.modal = { type: 'createTrip', data: {} };
     render();
@@ -2251,9 +2373,25 @@ function bindModalEvents() {
         showToast('舊密碼驗證失敗', 'error');
       }
     });
+    document.getElementById('btn-profile-deletion-review')?.addEventListener('click', async () => {
+      await loadAllUsersIfAdmin();
+      state.modal = { type: 'deletionReview', data: {} };
+      render();
+    });
+    document.getElementById('btn-request-deletion')?.addEventListener('click', handleRequestAccountDeletion);
+    document.getElementById('btn-cancel-deletion')?.addEventListener('click', handleCancelAccountDeletion);
     document.getElementById('btn-logout')?.addEventListener('click', async () => {
       state.modal = null;
+      state.lastModalType = null;
       await signOut(auth);
+    });
+  }
+
+  if (type === 'deletionReview') {
+    document.querySelectorAll('[data-review-deletion]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        handleReviewAccountDeletion(btn.dataset.targetUid, btn.dataset.reviewDeletion);
+      });
     });
   }
 
@@ -3024,6 +3162,87 @@ async function handleDeleteTrip(tripId) {
   } catch (err) {
     console.error(err);
     showToast('刪除失敗，請確認管理員權限或網路連線', 'error');
+  }
+}
+
+async function handleRequestAccountDeletion() {
+  if (isAdmin()) return;
+  const ok = window.confirm('確定送出刪除帳號申請？送出後會通知管理員審核並移除你的登入帳號。');
+  if (!ok) return;
+
+  try {
+    await updateDoc(doc(db, 'users', state.user.uid), {
+      deletionRequested: true,
+      deletionRequestedAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    state.profile.deletionRequested = true;
+
+    if (cfg.gasBridgeUrl) {
+      const res = await callGasBridge('requestAccountDeletion', {
+        displayName: state.profile.displayName || state.user.email,
+        email: state.user.email
+      });
+      showToast(res.ok ? '已送出申請並推播通知管理員' : '已送出申請，待管理員審核', 'success');
+    } else {
+      showToast('已送出刪除帳號申請，待管理員審核', 'success');
+    }
+    render();
+  } catch (err) {
+    console.error(err);
+    showToast('申請送出失敗，請稍後再試', 'error');
+  }
+}
+
+async function handleCancelAccountDeletion() {
+  try {
+    await updateDoc(doc(db, 'users', state.user.uid), {
+      deletionRequested: false,
+      deletionRequestedAt: null,
+      updatedAt: serverTimestamp()
+    });
+    state.profile.deletionRequested = false;
+    showToast('已取消刪除帳號申請');
+    render();
+  } catch (err) {
+    console.error(err);
+    showToast('取消失敗，請稍後再試', 'error');
+  }
+}
+
+async function handleReviewAccountDeletion(targetUid, decision) {
+  if (!isAdmin() || !targetUid) return;
+  const targetUser = state.allUsers.find((u) => u.id === targetUid);
+  const label = targetUser ? `${targetUser.displayName} (${targetUser.email})` : targetUid;
+
+  if (decision === 'approve') {
+    const ok = window.confirm(
+      `確定核准並永久移除帳號「${label}」？\n對方將無法再登入，歷史旅行將保留其舊名稱以維持足跡完整。`
+    );
+    if (!ok) return;
+  }
+
+  if (!cfg.gasBridgeUrl) {
+    showToast('需先部署 GAS 跳板才能執行帳號審核移除', 'error');
+    return;
+  }
+
+  try {
+    showToast(decision === 'approve' ? '正在移除帳號並更新歸戶名單...' : '正在駁回申請...');
+    const res = await callGasBridge('reviewAccountDeletion', {
+      targetUid,
+      decision
+    });
+    if (!res.ok) {
+      showToast(res.error || '審核操作失敗', 'error');
+      return;
+    }
+    await loadAllUsersIfAdmin();
+    showToast(decision === 'approve' ? '已永久移除該帳號' : '已駁回刪除申請並通知成員', 'success');
+    render();
+  } catch (err) {
+    console.error(err);
+    showToast('審核操作發生錯誤', 'error');
   }
 }
 

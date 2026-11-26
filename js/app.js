@@ -1970,11 +1970,14 @@ function renderCreateTripModalContent() {
 /* ----------------------------- Modal: 住宿各天分房檢視 ----------------------------- */
 function renderAccommodationModalContent(data) {
   const trip = activeTrip();
-  const stays = state.itineraries
+  const dates = getTripDateRange(trip.startDate, trip.endDate);
+  const staysByDate = {};
+  state.itineraries
     .filter((i) => i.type === 'accommodation' && i.stayDate)
-    .sort((a, b) => a.stayDate.localeCompare(b.stayDate));
-  const selectedStayDate = data?.stayDate || stays[0]?.stayDate;
-  const stay = stays.find((s) => s.stayDate === selectedStayDate) || stays[0];
+    .forEach((s) => { staysByDate[s.stayDate] = s; });
+
+  const selectedStayDate = data?.stayDate && dates.includes(data.stayDate) ? data.stayDate : dates[0];
+  const stay = staysByDate[selectedStayDate] || null;
   const linked = stay && trip.status !== 'settled'
     ? getLinkedPersonalExpenses(state.expenses, stay.id, state.user.uid)
     : { items: [], total: 0 };
@@ -1983,18 +1986,32 @@ function renderAccommodationModalContent(data) {
     ${modalHeader('住宿分房資訊')}
     <div class="p-5 overflow-y-auto td-modal-scroll space-y-4">
       <div class="flex gap-1.5 overflow-x-auto no-scrollbar">
-        ${stays.map((s, idx) => `
-          <button data-switch-stay="${esc(s.stayDate)}" class="px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 ${
-            s.stayDate === stay?.stayDate ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'
-          }">D${idx + 1} ${formatShortDateWithWeekday(s.stayDate)}</button>
-        `).join('')}
+        ${dates.map((d, idx) => {
+          const hasStay = Boolean(staysByDate[d]);
+          const isSelected = d === selectedStayDate;
+          return `
+            <button data-switch-stay="${esc(d)}" class="px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 flex items-center gap-1.5 ${
+              isSelected
+                ? 'bg-slate-900 text-white'
+                : hasStay
+                ? 'bg-slate-100 text-slate-700'
+                : 'bg-white text-slate-400 border border-dashed border-slate-300'
+            }">
+              <span>D${idx + 1} ${formatShortDateWithWeekday(d)}</span>
+              ${hasStay && !isSelected ? '<span class="w-1.5 h-1.5 rounded-full bg-teal-500"></span>' : ''}
+            </button>
+          `;
+        }).join('')}
       </div>
 
       ${stay ? `
         <div class="space-y-3">
           <div class="flex items-center justify-between gap-2">
-            <h4 class="font-bold text-slate-900 text-base">${esc(stay.title)}</h4>
-            <a href="${esc(buildGoogleMapsUrl(stay.mapsUrl || stay.title))}" target="_blank" rel="noopener" class="px-2.5 py-1 rounded-lg bg-slate-100 text-xs font-medium text-teal-700">開啟地圖</a>
+            <h4 class="font-bold text-slate-900 text-base truncate">${esc(stay.title)}</h4>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <a href="${esc(buildGoogleMapsUrl(stay.mapsUrl || stay.title))}" target="_blank" rel="noopener" class="px-2.5 py-1 rounded-lg bg-slate-100 text-xs font-medium text-teal-700">開啟地圖</a>
+              ${isAdmin() ? `<button type="button" data-open-stay-edit="${esc(selectedStayDate)}" class="px-2.5 py-1 rounded-lg glass-btn-teal-soft text-xs font-semibold">編輯此晚</button>` : ''}
+            </div>
           </div>
           <div class="space-y-2">
             ${(stay.rooms || []).map((r) => {
@@ -2009,7 +2026,16 @@ function renderAccommodationModalContent(data) {
           </div>
           ${renderLinkedExpensesBox(trip, stay.id, stay.title, linked)}
         </div>
-      ` : `<p class="text-xs text-slate-500">尚未設定住宿資料</p>`}
+      ` : `
+        <div class="py-6 text-center space-y-3">
+          <p class="text-xs text-slate-500">${formatShortDateWithWeekday(selectedStayDate)} 尚未設定住宿飯店</p>
+          ${isAdmin() ? `
+            <button type="button" data-open-stay-edit="${esc(selectedStayDate)}" class="px-3.5 py-2 rounded-xl glass-btn-primary text-xs font-semibold">
+              ＋ 新增此晚飯店
+            </button>
+          ` : ''}
+        </div>
+      `}
     </div>
   `;
 }
@@ -2018,19 +2044,36 @@ function renderAccommodationModalContent(data) {
 function renderAccommodationEditModalContent(data) {
   const trip = activeTrip();
   const dates = getTripDateRange(trip.startDate, trip.endDate);
-  const stayDate = data?.stayDate || dates[0];
-  const existing = state.itineraries.find((i) => i.type === 'accommodation' && i.stayDate === stayDate);
+  const stayDate = data?.stayDate && dates.includes(data.stayDate) ? data.stayDate : dates[0];
+  const staysByDate = {};
+  state.itineraries
+    .filter((i) => i.type === 'accommodation' && i.stayDate)
+    .forEach((s) => { staysByDate[s.stayDate] = s; });
+
+  const existing = staysByDate[stayDate] || null;
   const prevIdx = dates.indexOf(stayDate) - 1;
-  const prevStay = prevIdx >= 0 ? state.itineraries.find((i) => i.type === 'accommodation' && i.stayDate === dates[prevIdx]) : null;
+  const prevStay = prevIdx >= 0 ? staysByDate[dates[prevIdx]] || null : null;
   const rooms = data?.draftRooms || (existing?.rooms?.length ? existing.rooms : [{ roomId: 'rm_1', roomNo: 'A房', occupantIds: [] }]);
   const titleVal = data?.draftTitle ?? existing?.title ?? '';
   const mapsVal = data?.draftMapsUrl ?? existing?.mapsUrl ?? '';
+  const applyConsecutiveChecked = data?.draftApplyConsecutive !== undefined ? Boolean(data.draftApplyConsecutive) : true;
 
   return `
-    ${modalHeader(`編輯住宿與房號｜${formatShortDateWithWeekday(stayDate)}`)}
+    ${modalHeader(existing ? `編輯住宿與房號｜${formatShortDateWithWeekday(stayDate)}` : `新增飯店與房號｜${formatShortDateWithWeekday(stayDate)}`)}
     <form id="form-edit-accommodation" class="p-5 overflow-y-auto td-modal-scroll space-y-4">
-      <input type="hidden" name="stayDate" value="${esc(stayDate)}" />
       <input type="hidden" name="existingId" value="${esc(existing?.id || '')}" />
+
+      <!-- 住宿日期勾稽與切換（方便中途換飯店或新增其他晚飯店） -->
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">入住日期（切換日期可新增或更換飯店）</label>
+        <select name="stayDate" id="select-stay-date" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white font-medium">
+          ${dates.map((d, idx) => {
+            const s = staysByDate[d];
+            const label = `D${idx + 1} ${formatShortDateWithWeekday(d)}｜${s ? s.title : '尚未設定飯店'}`;
+            return `<option value="${esc(d)}" ${d === stayDate ? 'selected' : ''}>${esc(label)}</option>`;
+          }).join('')}
+        </select>
+      </div>
 
       ${prevStay ? `
         <button type="button" id="btn-copy-prev-stay" class="w-full py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-700">
@@ -2038,13 +2081,18 @@ function renderAccommodationEditModalContent(data) {
         </button>
       ` : ''}
 
-      <div>
-        <label class="block text-xs font-medium text-slate-600 mb-1">飯店名稱</label>
-        <input name="title" required value="${esc(titleVal)}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
-      </div>
+      <!-- Google Maps 連結置頂 + 自動帶入飯店名稱 -->
       <div>
         <label class="block text-xs font-medium text-slate-600 mb-1">Google Maps 連結</label>
-        <input name="mapsUrl" value="${esc(mapsVal)}" placeholder="選填" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
+        <div class="flex gap-2">
+          <input name="mapsUrl" value="${esc(mapsVal)}" placeholder="貼上 Google Maps 分享連結（選填）" class="flex-1 px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white" />
+          <button type="button" id="btn-resolve-hotel" class="shrink-0 px-3 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold">自動帶入</button>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">飯店名稱</label>
+        <input name="title" required value="${esc(titleVal)}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white" />
       </div>
 
       <div class="space-y-2.5">
@@ -2070,9 +2118,9 @@ function renderAccommodationEditModalContent(data) {
         `).join('')}
       </div>
 
-      <label class="flex items-center gap-2 text-xs text-slate-600">
-        <input type="checkbox" name="applyConsecutive" class="accent-teal-600" />
-        <span>同步套用至後續連住同飯店晚數</span>
+      <label class="flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
+        <input type="checkbox" name="applyConsecutive" ${applyConsecutiveChecked ? 'checked' : ''} class="accent-teal-600" />
+        <span>同步套用至後續連住飯店</span>
       </label>
 
       <button type="submit" class="w-full py-2.5 rounded-xl glass-btn-primary text-sm font-semibold">儲存住宿分房</button>
@@ -2962,11 +3010,72 @@ function bindModalEvents() {
   }
 
   if (type === 'createTrip') {
-    document.getElementById('form-create-trip')?.addEventListener('submit', async (e) => {
+    const tripForm = document.getElementById('form-create-trip');
+    const startInp = tripForm?.querySelector('[name="startDate"]');
+    const endInp = tripForm?.querySelector('[name="endDate"]');
+
+    if (startInp && endInp) {
+      const guardEndBeforeStart = (e) => {
+        if (!startInp.value) {
+          if (e) e.preventDefault();
+          endInp.blur();
+          showToast('請先選擇出發日期', 'error');
+          startInp.focus();
+          return false;
+        }
+        return true;
+      };
+
+      endInp.addEventListener('pointerdown', (e) => {
+        if (!startInp.value) guardEndBeforeStart(e);
+      });
+      endInp.addEventListener('click', (e) => {
+        if (!startInp.value) guardEndBeforeStart(e);
+      });
+      endInp.addEventListener('focus', (e) => {
+        if (!startInp.value) {
+          guardEndBeforeStart(e);
+          return;
+        }
+        endInp.min = startInp.value;
+        if (!endInp.value || endInp.value < startInp.value) {
+          endInp.value = startInp.value;
+        }
+      });
+
+      startInp.addEventListener('change', () => {
+        const sVal = startInp.value;
+        if (!sVal) {
+          endInp.removeAttribute('min');
+          endInp.value = '';
+          return;
+        }
+        endInp.min = sVal;
+        if (!endInp.value || endInp.value < sVal) {
+          endInp.value = sVal;
+        }
+      });
+
+      endInp.addEventListener('change', () => {
+        if (!startInp.value) {
+          endInp.value = '';
+          showToast('請先選擇出發日期', 'error');
+          startInp.focus();
+          return;
+        }
+        if (endInp.value && endInp.value < startInp.value) {
+          showToast('結束日期不可早於出發日期', 'error');
+          endInp.value = startInp.value;
+        }
+      });
+    }
+
+    tripForm?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
       const startDate = String(fd.get('startDate'));
       const endDate = String(fd.get('endDate'));
+      if (!startDate) return showToast('請先選擇出發日期', 'error');
       if (endDate < startDate) return showToast('結束日期不可早於出發日期', 'error');
 
       const docRef = await addDoc(collection(db, 'trips'), {
@@ -3003,13 +3112,20 @@ function bindModalEvents() {
         render();
       });
     });
+    document.querySelectorAll('[data-open-stay-edit]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        state.modal = { type: 'accommodationEdit', data: { stayDate: btn.dataset.openStayEdit } };
+        render();
+      });
+    });
   }
 
   if (type === 'accommodationEdit') {
+    const form = document.getElementById('form-edit-accommodation');
     const syncRoomsFromDom = () => {
-      const form = document.getElementById('form-edit-accommodation');
       const title = form.querySelector('[name="title"]').value;
       const mapsUrl = form.querySelector('[name="mapsUrl"]').value;
+      const applyConsecutive = Boolean(form.querySelector('[name="applyConsecutive"]')?.checked);
       const inputs = form.querySelectorAll('[data-room-no]');
       const rooms = Array.from(inputs).map((inp, idx) => {
         const occs = Array.from(form.querySelectorAll(`[data-room-occ="${idx}"]:checked`)).map((c) => c.value);
@@ -3018,8 +3134,80 @@ function bindModalEvents() {
       state.modal.data.draftTitle = title;
       state.modal.data.draftMapsUrl = mapsUrl;
       state.modal.data.draftRooms = rooms;
-      return { title, mapsUrl, rooms };
+      state.modal.data.draftApplyConsecutive = applyConsecutive;
+      return { title, mapsUrl, rooms, applyConsecutive };
     };
+
+    // 即時保留草稿，避免切換視窗或背景同步時清空已輸入的飯店名稱與連結
+    form?.querySelector('[name="title"]')?.addEventListener('input', (e) => {
+      state.modal.data.draftTitle = e.target.value;
+    });
+    form?.querySelector('[name="mapsUrl"]')?.addEventListener('input', (e) => {
+      state.modal.data.draftMapsUrl = e.target.value;
+    });
+    form?.querySelector('[name="applyConsecutive"]')?.addEventListener('change', (e) => {
+      state.modal.data.draftApplyConsecutive = e.target.checked;
+    });
+
+    // 切換入住日期（直接載入該晚既有飯店或空白表單以新增不同飯店）
+    document.getElementById('select-stay-date')?.addEventListener('change', (e) => {
+      state.modal.data = {
+        stayDate: e.target.value,
+        draftApplyConsecutive: true
+      };
+      render();
+    });
+
+    // Google Maps 連結自動帶入飯店名稱（優先查 places_cache，再透過 GAS Places API）
+    document.getElementById('btn-resolve-hotel')?.addEventListener('click', async () => {
+      const { mapsUrl } = syncRoomsFromDom();
+      const trimmedUrl = (mapsUrl || '').trim();
+      if (!trimmedUrl) return showToast('請先貼上 Google Maps 連結', 'error');
+
+      const cacheKey = btoa(unescape(encodeURIComponent(trimmedUrl))).replace(/[^a-zA-Z0-9]/g, '').slice(0, 48);
+      let placeData = null;
+      try {
+        const snap = await getDoc(doc(db, 'places_cache', cacheKey));
+        if (snap.exists()) placeData = snap.data();
+      } catch {}
+
+      if (!placeData) {
+        if (!cfg.gasBridgeUrl) {
+          const m = trimmedUrl.match(/\/maps\/place\/([^\/@?]+)/);
+          if (m && m[1]) {
+            state.modal.data.draftTitle = decodeURIComponent(m[1].replace(/\+/g, ' '));
+            showToast('已從網址帶入飯店名稱', 'success');
+            render();
+          } else {
+            showToast('尚未串接 GAS Places API 跳板，請手動填寫飯店名稱');
+          }
+          return;
+        }
+        showToast('查詢飯店名稱中...');
+        const res = await callGasBridge('resolvePlace', { mapsUrl: trimmedUrl });
+        if (!res.ok) return showToast(res.error || '查詢失敗', 'error');
+        placeData = res;
+        if (res.displayName) {
+          try {
+            await setDoc(doc(db, 'places_cache', cacheKey), {
+              normalizedUrl: trimmedUrl,
+              placeId: res.placeId || '',
+              displayName: res.displayName,
+              weekdayDescriptions: res.weekdayDescriptions || [],
+              fetchedAt: serverTimestamp()
+            });
+          } catch {}
+        }
+      }
+
+      if (placeData.displayName) {
+        state.modal.data.draftTitle = placeData.displayName;
+        showToast('已自動帶入飯店名稱，可再自行修改', 'success');
+        render();
+      } else {
+        showToast('查無飯店名稱，請手動輸入', 'error');
+      }
+    });
 
     document.getElementById('btn-copy-prev-stay')?.addEventListener('click', () => {
       const trip = activeTrip();
@@ -3045,19 +3233,22 @@ function bindModalEvents() {
         render();
       });
     });
-    document.getElementById('form-edit-accommodation')?.addEventListener('submit', async (e) => {
+    form?.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const { title, mapsUrl, rooms } = syncRoomsFromDom();
+      const { title, mapsUrl, rooms, applyConsecutive } = syncRoomsFromDom();
       const fd = new FormData(e.target);
       const stayDate = String(fd.get('stayDate'));
       const existingId = String(fd.get('existingId'));
-      const applyConsecutive = fd.get('applyConsecutive') === 'on';
+      const oldStay = existingId ? state.itineraries.find((s) => s.id === existingId) : null;
+      const prevTitle = oldStay?.title?.trim() || '';
+      const cleanTitle = title.trim();
+      const cleanMapsUrl = mapsUrl.trim();
 
       const payload = {
         type: 'accommodation',
         stayDate,
-        title: title.trim(),
-        mapsUrl: mapsUrl.trim(),
+        title: cleanTitle,
+        mapsUrl: cleanMapsUrl,
         rooms,
         updatedBy: state.user.uid,
         updatedAt: serverTimestamp()
@@ -3079,8 +3270,10 @@ function bindModalEvents() {
         const startIdx = dates.indexOf(stayDate);
         for (let i = startIdx + 1; i < dates.length; i++) {
           const nextStay = state.itineraries.find((s) => s.type === 'accommodation' && s.stayDate === dates[i]);
-          if (nextStay && nextStay.title === title.trim()) {
+          if (nextStay && (nextStay.title === cleanTitle || (prevTitle && nextStay.title === prevTitle))) {
             await updateDoc(doc(db, 'trips', state.activeTripId, 'itineraries', nextStay.id), {
+              title: cleanTitle,
+              mapsUrl: cleanMapsUrl,
               rooms,
               updatedBy: state.user.uid,
               updatedAt: serverTimestamp()
@@ -3092,6 +3285,7 @@ function bindModalEvents() {
       }
 
       state.modal = null;
+      state.lastModalType = null;
       showToast('已更新住宿與房號', 'success');
       render();
     });
@@ -3931,10 +4125,10 @@ async function handleReviewAccountDeletion(targetUid, decision) {
 
 /* ============================= 系統通知權限即時同步 ============================= */
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && state.user) render();
+  if (!document.hidden && state.user && !state.modal) render();
 });
 window.addEventListener('focus', () => {
-  if (state.user) render();
+  if (state.user && !state.modal) render();
 });
 if (navigator.permissions && navigator.permissions.query) {
   navigator.permissions.query({ name: 'notifications' }).then((status) => {

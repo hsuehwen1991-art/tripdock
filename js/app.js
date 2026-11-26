@@ -1271,7 +1271,7 @@ function renderHelpModalContent() {
   const html = typeof marked !== 'undefined' ? marked.parse(md) : `<pre>${esc(md)}</pre>`;
   return `
     ${modalHeader('使用說明')}
-    <div id="help-md-body" class="p-5 overflow-y-auto prose prose-sm prose-slate max-w-none">
+    <div id="help-md-body" class="p-5 overflow-y-auto td-modal-scroll prose prose-sm prose-slate max-w-none">
       ${html}
     </div>
   `;
@@ -1283,7 +1283,7 @@ function renderPwaModalContent(data) {
   const tab = data?.tab || (env.isAndroid ? 'android' : 'ios');
   return `
     ${modalHeader('加入主畫面與推播設定')}
-    <div class="p-5 overflow-y-auto space-y-4 text-sm">
+    <div class="p-5 overflow-y-auto td-modal-scroll space-y-4 text-sm">
       ${env.isInAppBrowser ? `
         <div class="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs leading-relaxed">
           偵測到你正在使用 LINE 或社群 App 內建瀏覽器，請先點擊畫面角落選單選擇<strong>以 Safari 或 Chrome 開啟</strong>，再依下方步驟加入主畫面。
@@ -1329,7 +1329,7 @@ function renderProfileModalContent() {
 
   return `
     ${modalHeader('帳號設定')}
-    <div class="p-5 overflow-y-auto space-y-5">
+    <div class="p-5 overflow-y-auto td-modal-scroll space-y-5">
       <form id="form-profile-name" class="space-y-2.5">
         <label class="block text-xs font-semibold text-slate-700">顯示名稱</label>
         <div class="flex gap-2">
@@ -1391,7 +1391,7 @@ function renderDeletionReviewModalContent() {
 
   return `
     ${modalHeader('帳號刪除審核')}
-    <div class="p-5 overflow-y-auto space-y-4">
+    <div class="p-5 overflow-y-auto td-modal-scroll space-y-4">
       ${pending.length === 0 ? `
         <div class="py-8 text-center space-y-1.5">
           <p class="text-sm font-semibold text-slate-700">目前沒有待審核的刪除申請</p>
@@ -1444,19 +1444,19 @@ function renderDeletionReviewModalContent() {
 function renderCreateTripModalContent() {
   return `
     ${modalHeader('建立新旅行')}
-    <form id="form-create-trip" class="p-5 overflow-y-auto space-y-3.5">
+    <form id="form-create-trip" class="p-5 overflow-y-auto td-modal-scroll space-y-3.5">
       <div>
         <label class="block text-xs font-medium text-slate-600 mb-1">旅行名稱</label>
         <input name="name" required class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
       </div>
-      <div class="grid grid-cols-2 gap-3">
-        <div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="min-w-0">
           <label class="block text-xs font-medium text-slate-600 mb-1">出發日期</label>
-          <input name="startDate" type="date" required class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
+          <input name="startDate" type="date" required class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white" />
         </div>
-        <div>
+        <div class="min-w-0">
           <label class="block text-xs font-medium text-slate-600 mb-1">結束日期</label>
-          <input name="endDate" type="date" required class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
+          <input name="endDate" type="date" required class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white" />
         </div>
       </div>
       <div class="grid grid-cols-2 gap-3">
@@ -1495,7 +1495,7 @@ function renderAccommodationModalContent(data) {
 
   return `
     ${modalHeader('住宿分房資訊')}
-    <div class="p-5 overflow-y-auto space-y-4">
+    <div class="p-5 overflow-y-auto td-modal-scroll space-y-4">
       <div class="flex gap-1.5 overflow-x-auto no-scrollbar">
         ${stays.map((s, idx) => `
           <button data-switch-stay="${esc(s.stayDate)}" class="px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 ${
@@ -1542,7 +1542,7 @@ function renderAccommodationEditModalContent(data) {
 
   return `
     ${modalHeader(`編輯住宿與房號｜${formatShortDateWithWeekday(stayDate)}`)}
-    <form id="form-edit-accommodation" class="p-5 overflow-y-auto space-y-4">
+    <form id="form-edit-accommodation" class="p-5 overflow-y-auto td-modal-scroll space-y-4">
       <input type="hidden" name="stayDate" value="${esc(stayDate)}" />
       <input type="hidden" name="existingId" value="${esc(existing?.id || '')}" />
 
@@ -1706,7 +1706,7 @@ function renderItineraryDetailModalContent(data) {
 
   return `
     ${modalHeader(`${meta.badge}｜${meta.title}`)}
-    <div class="p-5 overflow-y-auto space-y-4">
+    <div class="p-5 overflow-y-auto td-modal-scroll space-y-4">
       ${specificHtml}
       <p class="text-xs text-slate-600">成員：${esc(memberNamesList(trip, it.participantIds))}</p>
       ${it.description ? `<p class="text-xs text-slate-600 whitespace-pre-line bg-slate-50 rounded-xl p-3">${esc(it.description)}</p>` : ''}
@@ -1735,7 +1735,7 @@ function renderItineraryFormModalContent(data) {
 
   return `
     ${modalHeader(editing ? '編輯行程' : '新增行程')}
-    <form id="form-itinerary" class="p-5 overflow-y-auto space-y-4">
+    <form id="form-itinerary" class="p-5 overflow-y-auto td-modal-scroll space-y-4">
       <input type="hidden" name="editingId" value="${esc(editing?.id || '')}" />
 
       ${!editing ? `
@@ -1750,18 +1750,18 @@ function renderItineraryFormModalContent(data) {
         </div>
       ` : `<input type="hidden" name="fixedType" value="${esc(fType)}" />`}
 
-      <div class="grid grid-cols-3 gap-2">
-        <div>
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+        <div class="col-span-2 sm:col-span-1 min-w-0">
           <label class="block text-xs font-medium text-slate-600 mb-1">日期</label>
-          <input name="dateKey" type="date" required value="${esc(dateKey)}" class="w-full px-2.5 py-2 rounded-xl border border-slate-200 text-xs" />
+          <input name="dateKey" type="date" required value="${esc(dateKey)}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white" />
         </div>
-        <div>
+        <div class="min-w-0">
           <label class="block text-xs font-medium text-slate-600 mb-1">開始時間</label>
-          <input name="startHHMM" type="time" required value="${esc(startVal)}" class="w-full px-2.5 py-2 rounded-xl border border-slate-200 text-xs" />
+          <input name="startHHMM" type="time" required value="${esc(startVal)}" class="w-full px-2.5 py-2 rounded-xl border border-slate-200 text-sm bg-white" />
         </div>
-        <div>
+        <div class="min-w-0">
           <label class="block text-xs font-medium text-slate-600 mb-1">結束時間</label>
-          <input name="endHHMM" type="time" required value="${esc(endVal)}" class="w-full px-2.5 py-2 rounded-xl border border-slate-200 text-xs" />
+          <input name="endHHMM" type="time" required value="${esc(endVal)}" class="w-full px-2.5 py-2 rounded-xl border border-slate-200 text-sm bg-white" />
         </div>
       </div>
 
@@ -1951,21 +1951,21 @@ function renderExpenseFormModalContent(data) {
 
   return `
     ${modalHeader(data.editingId ? '編輯開銷' : '新增開銷')}
-    <form id="form-expense" class="p-5 overflow-y-auto space-y-4">
+    <form id="form-expense" class="p-5 overflow-y-auto td-modal-scroll space-y-4">
       <!-- 去括號切換：團體代墊 / 個人自付 -->
       <div class="grid grid-cols-2 bg-slate-100 p-1 rounded-xl text-xs font-semibold">
         <button type="button" data-exp-personal="false" class="py-2 rounded-lg ${!d.isPersonalExpense ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500'}">團體代墊</button>
         <button type="button" data-exp-personal="true" class="py-2 rounded-lg ${d.isPersonalExpense ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500'}">個人自付</button>
       </div>
 
-      <div class="grid grid-cols-3 gap-2">
-        <div class="col-span-2">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div class="sm:col-span-2 min-w-0">
           <label class="block text-xs font-medium text-slate-600 mb-1">開銷項目</label>
           <input data-exp-bind="title" required value="${esc(d.title)}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
         </div>
-        <div>
+        <div class="min-w-0">
           <label class="block text-xs font-medium text-slate-600 mb-1">消費日期</label>
-          <input data-exp-bind="expenseDate" type="date" required value="${esc(d.expenseDate)}" class="w-full px-2.5 py-2 rounded-xl border border-slate-200 text-xs" />
+          <input data-exp-bind="expenseDate" type="date" required value="${esc(d.expenseDate)}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white" />
         </div>
       </div>
 

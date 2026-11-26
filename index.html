@@ -39,9 +39,23 @@
   <!-- 唯一設定檔（網頁與 Service Worker 共用） -->
   <script src="./js/config.js"></script>
   <style>
+    html, body {
+      overflow-x: hidden;
+      overscroll-behavior-x: none;
+    }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", sans-serif; }
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .td-modal-scroll {
+      overflow-x: hidden;
+      overscroll-behavior-x: none;
+      touch-action: pan-y;
+    }
+    #modal-panel input, #modal-panel select, #modal-panel textarea {
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+    }
 
     /* ===== 輕量版 Liquid Glass 材質（僅套用於導覽列、分頁列與重點按鈕） ===== */
     .glass-header {

@@ -18,6 +18,7 @@ export const TRANSPORT_MODE_LABELS = {
 export const TICKETING_OPTIONS = ['車票', '儲值交通卡', '信用卡'];
 
 export const CURRENCIES = [
+  { code: 'TWD', label: 'TWD 新臺幣' },
   { code: 'JPY', label: 'JPY 日圓' },
   { code: 'KRW', label: 'KRW 韓元' },
   { code: 'THB', label: 'THB 泰銖' },
@@ -26,8 +27,7 @@ export const CURRENCIES = [
   { code: 'GBP', label: 'GBP 英鎊' },
   { code: 'SGD', label: 'SGD 新幣' },
   { code: 'HKD', label: 'HKD 港幣' },
-  { code: 'IDR', label: 'IDR 印尼盾' },
-  { code: 'TWD', label: 'TWD 新臺幣' }
+  { code: 'IDR', label: 'IDR 印尼盾' }
 ];
 
 /**

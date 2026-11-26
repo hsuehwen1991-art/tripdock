@@ -387,12 +387,12 @@ function renderAuthView() {
           ${authMode === 'register' ? `
             <div>
               <label class="block text-xs font-medium text-slate-600 mb-1">顯示名稱</label>
-              <input name="displayName" required placeholder="例如：小明" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+              <input name="displayName" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
             </div>
           ` : ''}
           <div>
             <label class="block text-xs font-medium text-slate-600 mb-1">Email</label>
-            <input name="email" type="email" required placeholder="you@example.com" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+            <input name="email" type="email" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
           </div>
           ${authMode !== 'reset' ? `
             <div>
@@ -596,17 +596,17 @@ function renderTripDetail() {
       ${renderAccommodationBanner(trip, tonightStay)}
 
       <!-- 主功能分頁列 -->
-      <div class="flex items-center gap-1.5 bg-white p-1.5 rounded-2xl border border-slate-200 overflow-x-auto no-scrollbar">
+      <div class="grid ${isAdmin() ? 'grid-cols-4' : 'grid-cols-3'} gap-1 sm:gap-1.5 bg-white p-1.5 rounded-2xl border border-slate-200">
         ${[
           { id: 'timeline', label: '行程時間軸', icon: 'calendar-clock' },
           { id: 'expenses', label: '帳務分帳', icon: 'receipt' },
           { id: 'settlement', label: '結帳收款', icon: 'wallet' },
           ...(isAdmin() ? [{ id: 'admin', label: '管理員設定', icon: 'shield' }] : [])
         ].map((tab) => `
-          <button data-tab="${tab.id}" class="flex-1 min-w-[92px] py-2 px-3 rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 transition ${
+          <button data-tab="${tab.id}" class="min-w-0 py-2 px-1 sm:px-3 rounded-xl text-[11px] sm:text-sm font-semibold flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 whitespace-nowrap transition ${
             state.activeTab === tab.id ? 'bg-teal-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
           }">
-            <i data-lucide="${tab.icon}" class="w-4 h-4"></i>${tab.label}
+            <i data-lucide="${tab.icon}" class="w-4 h-4 shrink-0"></i><span>${tab.label}</span>
           </button>
         `).join('')}
       </div>
@@ -1258,7 +1258,7 @@ function renderProfileModalContent() {
       <form id="form-profile-pwd" class="space-y-2.5 pt-3 border-t border-slate-100">
         <label class="block text-xs font-semibold text-slate-700">修改密碼</label>
         <input name="oldPassword" type="password" required placeholder="目前密碼" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
-        <input name="newPassword" type="password" required minlength="6" placeholder="新密碼（至少 6 位）" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
+        <input name="newPassword" type="password" required minlength="6" placeholder="新密碼，至少 6 位" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
         <button type="submit" class="px-4 py-2 rounded-xl bg-slate-800 text-white text-xs font-semibold">變更密碼</button>
       </form>
 
@@ -1277,7 +1277,7 @@ function renderCreateTripModalContent() {
     <form id="form-create-trip" class="p-5 overflow-y-auto space-y-3.5">
       <div>
         <label class="block text-xs font-medium text-slate-600 mb-1">旅行名稱</label>
-        <input name="name" required placeholder="例如：2026 京都古都遊" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
+        <input name="name" required class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
       </div>
       <div class="grid grid-cols-2 gap-3">
         <div>
@@ -1292,13 +1292,13 @@ function renderCreateTripModalContent() {
       <div class="grid grid-cols-2 gap-3">
         <div>
           <label class="block text-xs font-medium text-slate-600 mb-1">旅行地點</label>
-          <input name="location" required placeholder="日本・京都" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
+          <input name="location" required class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
         </div>
         <div>
           <label class="block text-xs font-medium text-slate-600 mb-1">目標時區</label>
           <select name="timezone" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white">
+            <option value="Asia/Taipei" selected>台灣・香港・新加坡 UTC+8</option>
             <option value="Asia/Tokyo">日本・韓國 UTC+9</option>
-            <option value="Asia/Taipei">台灣・香港・新加坡 UTC+8</option>
             <option value="Asia/Bangkok">泰國・越南 UTC+7</option>
             <option value="Asia/Makassar">峇里島 UTC+8</option>
             <option value="Europe/Paris">中歐 UTC+1</option>
@@ -1384,7 +1384,7 @@ function renderAccommodationEditModalContent(data) {
 
       <div>
         <label class="block text-xs font-medium text-slate-600 mb-1">飯店名稱</label>
-        <input name="title" required value="${esc(titleVal)}" placeholder="例如：新宿格蘭貝爾飯店" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
+        <input name="title" required value="${esc(titleVal)}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
       </div>
       <div>
         <label class="block text-xs font-medium text-slate-600 mb-1">Google Maps 連結</label>
@@ -1598,7 +1598,7 @@ function renderItineraryFormModalContent(data) {
       ${fType === 'attraction' ? `
         <div>
           <label class="block text-xs font-medium text-slate-600 mb-1">景點名稱</label>
-          <input name="title" required value="${esc(editing?.title || '')}" placeholder="例如：淺草寺" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
+          <input name="title" required value="${esc(editing?.title || '')}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
         </div>
         <div>
           <label class="block text-xs font-medium text-slate-600 mb-1">地點或地圖連結</label>
@@ -1661,7 +1661,7 @@ function renderItineraryFormModalContent(data) {
             <button type="button" data-form-tmode="${k}" class="py-1.5 rounded-lg ${tMode === k ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500'}">${v}</button>
           `).join('')}
         </div>
-        <input name="title" value="${esc(editing?.title || '')}" placeholder="名稱（例：N'EX 成田特快、機場包車）" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
+        <input name="title" value="${esc(editing?.title || '')}" placeholder="名稱" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
         <div class="grid grid-cols-2 gap-2">
           <input name="origin" required value="${esc(editing?.origin || '')}" placeholder="出發地" class="px-3 py-2 rounded-xl border border-slate-200 text-sm" />
           <input name="destination" required value="${esc(editing?.destination || '')}" placeholder="目的地" class="px-3 py-2 rounded-xl border border-slate-200 text-sm" />
@@ -1681,7 +1681,7 @@ function renderItineraryFormModalContent(data) {
         ` : ''}
 
         ${tMode === 'transit' ? `
-          <input name="serviceNo" value="${esc(editing?.serviceNo || '')}" placeholder="班次（例：高鐵 0814、N'EX 15）" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
+          <input name="serviceNo" value="${esc(editing?.serviceNo || '')}" placeholder="班次" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
           <div class="space-y-1">
             <label class="block text-xs font-medium text-slate-600">驗票方式</label>
             <div class="flex flex-wrap gap-2">
@@ -1726,12 +1726,7 @@ function renderItineraryFormModalContent(data) {
 }
 
 /* ----------------------------- Modal: 新增 / 編輯開銷表單 ----------------------------- */
-function renderExpenseFormModalContent(data) {
-  const trip = activeTrip();
-  const d = data.draft;
-  const activeIds = trip.activeMemberIds || [];
-
-  // 即時試算分攤結果
+function computeExpensePreview(d) {
   let previewSplits = [];
   let previewTotal = 0;
   let previewSurplus = 0;
@@ -1753,6 +1748,36 @@ function renderExpenseFormModalContent(data) {
     previewTotal = previewSplits.reduce((s, x) => s + x.twdShare, 0);
     previewSurplus = previewTotal - Math.round(Number(d.twdAmount) || 0);
   }
+  return { previewSplits, previewTotal, previewSurplus };
+}
+
+function renderExpenseSummaryBarHtml(previewTotal, previewSurplus) {
+  return `
+    <span class="text-slate-600">分攤表列總額：<strong>NT$${previewTotal.toLocaleString()}</strong></span>
+    ${previewSurplus > 0 ? `<span class="text-teal-700 font-semibold">尾差補貼 +NT$${previewSurplus}</span>` : previewSurplus < 0 ? `<span class="text-rose-600 font-semibold">尚差 NT$${Math.abs(previewSurplus)}</span>` : `<span class="text-slate-500">已平衡</span>`}
+  `;
+}
+
+function updateExpensePreviewDom(d) {
+  const { previewSplits, previewTotal, previewSurplus } = computeExpensePreview(d);
+  if (!d.isPersonalExpense && d.splitMode === 'equal') {
+    document.querySelectorAll('[data-exp-equal-share]').forEach((span) => {
+      const uid = span.dataset.expEqualShare;
+      const splitObj = previewSplits.find((s) => s.userId === uid);
+      span.innerHTML = `NT$${(splitObj?.twdShare || 0).toLocaleString()}${splitObj?.isRoundedUp ? ' <span class="text-teal-700">+1</span>' : ''}`;
+    });
+  }
+  const summaryEl = document.getElementById('expense-split-summary');
+  if (summaryEl) {
+    summaryEl.innerHTML = renderExpenseSummaryBarHtml(previewTotal, previewSurplus);
+  }
+}
+
+function renderExpenseFormModalContent(data) {
+  const trip = activeTrip();
+  const d = data.draft;
+  const activeIds = trip.activeMemberIds || [];
+  const { previewSplits, previewTotal, previewSurplus } = computeExpensePreview(d);
 
   return `
     ${modalHeader(data.editingId ? '編輯開銷' : '新增開銷')}
@@ -1766,7 +1791,7 @@ function renderExpenseFormModalContent(data) {
       <div class="grid grid-cols-3 gap-2">
         <div class="col-span-2">
           <label class="block text-xs font-medium text-slate-600 mb-1">開銷項目</label>
-          <input data-exp-bind="title" required value="${esc(d.title)}" placeholder="例如：一蘭拉麵、飯店房帳" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
+          <input data-exp-bind="title" required value="${esc(d.title)}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
         </div>
         <div>
           <label class="block text-xs font-medium text-slate-600 mb-1">消費日期</label>
@@ -1794,14 +1819,13 @@ function renderExpenseFormModalContent(data) {
           <button type="button" data-exp-mode="direct_twd" class="py-1.5 rounded-lg ${d.twdInputMode === 'direct_twd' ? 'bg-teal-600 text-white' : 'text-slate-600'}">刷卡實付臺幣</button>
         </div>
 
-        <div class="grid grid-cols-2 gap-2">
-          <select data-exp-bind="currency" class="px-2.5 py-2 rounded-xl border border-slate-200 text-xs bg-white">
-            ${CURRENCIES.map((c) => `<option value="${c.code}" ${d.currency === c.code ? 'selected' : ''}>${c.label}</option>`).join('')}
-          </select>
-          <input data-exp-bind="originalAmount" type="number" step="0.01" value="${esc(d.originalAmount)}" placeholder="${d.twdInputMode === 'auto_fx' ? '輸入外幣金額' : '原幣金額選填'}" class="px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white" />
-        </div>
-
         ${d.twdInputMode === 'auto_fx' ? `
+          <div class="grid grid-cols-2 gap-2">
+            <select data-exp-bind="currency" class="px-2.5 py-2 rounded-xl border border-slate-200 text-xs bg-white">
+              ${CURRENCIES.map((c) => `<option value="${c.code}" ${d.currency === c.code ? 'selected' : ''}>${c.label}</option>`).join('')}
+            </select>
+            <input data-exp-bind="originalAmount" type="number" inputmode="decimal" step="any" value="${esc(d.originalAmount)}" placeholder="輸入金額" class="px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white" />
+          </div>
           <div class="flex items-center justify-between gap-2">
             <span class="text-xs text-slate-600">${d.exchangeRate ? `鎖定匯率：${Number(d.exchangeRate).toFixed(4)} → NT$${Number(d.twdAmount || 0).toLocaleString()}` : '點擊換算取得當日匯率'}</span>
             <button type="button" id="btn-fetch-fx" class="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-semibold">換算匯率</button>
@@ -1809,7 +1833,16 @@ function renderExpenseFormModalContent(data) {
         ` : `
           <div>
             <label class="block text-xs font-medium text-slate-600 mb-1">實付新臺幣金額</label>
-            <input data-exp-bind="twdAmount" type="number" min="1" required value="${esc(d.twdAmount)}" placeholder="輸入刷卡通知臺幣整數" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white font-bold" />
+            <input data-exp-bind="twdAmount" type="text" inputmode="numeric" pattern="[0-9]*" required value="${esc(d.twdAmount)}" placeholder="輸入新臺幣金額" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white font-bold" />
+          </div>
+          <div class="pt-1 space-y-1">
+            <label class="block text-[11px] font-medium text-slate-400">原幣紀錄選填</label>
+            <div class="grid grid-cols-2 gap-2">
+              <select data-exp-bind="currency" class="px-2.5 py-2 rounded-xl border border-slate-200 text-xs bg-white">
+                ${CURRENCIES.map((c) => `<option value="${c.code}" ${d.currency === c.code ? 'selected' : ''}>${c.label}</option>`).join('')}
+              </select>
+              <input data-exp-bind="originalAmount" type="number" inputmode="decimal" step="any" value="${esc(d.originalAmount)}" placeholder="原幣金額選填" class="px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white" />
+            </div>
           </div>
         `}
       </div>
@@ -1846,8 +1879,8 @@ function renderExpenseFormModalContent(data) {
                     </label>
                     ${checked ? (
                       d.splitMode === 'custom'
-                        ? `<input type="number" min="0" data-exp-custom="${esc(uid)}" value="${esc(d.customShares[uid] ?? '')}" placeholder="NT$" class="w-24 px-2 py-1 rounded-lg border border-slate-200 text-xs text-right bg-white" />`
-                        : `<span class="text-xs font-bold text-slate-800">NT$${(splitObj?.twdShare || 0).toLocaleString()}${splitObj?.isRoundedUp ? ' <span class="text-teal-700">+1</span>' : ''}</span>`
+                        ? `<input type="text" inputmode="numeric" pattern="[0-9]*" data-exp-custom="${esc(uid)}" value="${esc(d.customShares[uid] ?? '')}" placeholder="NT$" class="w-24 px-2 py-1 rounded-lg border border-slate-200 text-xs text-right bg-white" />`
+                        : `<span data-exp-equal-share="${esc(uid)}" class="text-xs font-bold text-slate-800">NT$${(splitObj?.twdShare || 0).toLocaleString()}${splitObj?.isRoundedUp ? ' <span class="text-teal-700">+1</span>' : ''}</span>`
                     ) : ''}
                   </div>
                 `;
@@ -1855,9 +1888,8 @@ function renderExpenseFormModalContent(data) {
             </div>
           </div>
 
-          <div class="px-3.5 py-2.5 rounded-xl bg-slate-100 text-xs flex items-center justify-between">
-            <span class="text-slate-600">分攤表列總額：<strong>NT$${previewTotal.toLocaleString()}</strong></span>
-            ${previewSurplus > 0 ? `<span class="text-teal-700 font-semibold">尾差補貼 +NT$${previewSurplus}</span>` : previewSurplus < 0 ? `<span class="text-rose-600 font-semibold">尚差 NT$${Math.abs(previewSurplus)}</span>` : `<span class="text-slate-500">已平衡</span>`}
+          <div id="expense-split-summary" class="px-3.5 py-2.5 rounded-xl bg-slate-100 text-xs flex items-center justify-between">
+            ${renderExpenseSummaryBarHtml(previewTotal, previewSurplus)}
           </div>
         </div>
       ` : ''}
@@ -2076,7 +2108,7 @@ function openExpenseForm(editingExp = null, prefill = {}) {
         isPersonalExpense: Boolean(editingExp?.isPersonalExpense),
         payerId: editingExp?.payerId || state.user.uid,
         twdInputMode: editingExp?.twdInputMode || 'auto_fx',
-        currency: editingExp?.currency || 'JPY',
+        currency: editingExp?.currency || 'TWD',
         originalAmount: editingExp?.originalAmount ?? '',
         exchangeRate: editingExp?.exchangeRate ?? null,
         twdAmount: editingExp?.twdAmount ?? '',
@@ -2549,10 +2581,20 @@ function bindModalEvents() {
       });
     });
     document.querySelectorAll('[data-exp-bind]').forEach((el) => {
+      const key = el.dataset.expBind;
       const evtName = el.tagName === 'SELECT' ? 'change' : 'input';
       el.addEventListener(evtName, () => {
-        d[el.dataset.expBind] = el.value;
-        if (el.dataset.expBind === 'twdAmount' || el.dataset.expBind === 'payerId') render();
+        if (key === 'twdAmount') {
+          const digits = el.value.replace(/[^\d]/g, '');
+          if (el.value !== digits) el.value = digits;
+          d.twdAmount = digits;
+          updateExpensePreviewDom(d);
+          return;
+        }
+        d[key] = el.value;
+        if (key === 'payerId') {
+          updateExpensePreviewDom(d);
+        }
       });
     });
     document.querySelectorAll('[data-exp-member]').forEach((cb) => {
@@ -2565,9 +2607,11 @@ function bindModalEvents() {
     });
     document.querySelectorAll('[data-exp-custom]').forEach((inp) => {
       inp.addEventListener('input', () => {
-        d.customShares[inp.dataset.expCustom] = inp.value;
+        const digits = inp.value.replace(/[^\d]/g, '');
+        if (inp.value !== digits) inp.value = digits;
+        d.customShares[inp.dataset.expCustom] = digits;
+        updateExpensePreviewDom(d);
       });
-      inp.addEventListener('change', () => render());
     });
 
     document.getElementById('btn-fetch-fx')?.addEventListener('click', async () => {

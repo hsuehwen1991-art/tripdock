@@ -468,9 +468,38 @@ async function handleSubscribePush() {
     });
 
     if (token) {
-      const key = 'tok_' + token.slice(-16).replace(/[^a-zA-Z0-9]/g, '');
       const platform = env.isIOS ? 'ios_pwa' : env.isAndroid ? 'android' : 'desktop';
+      let key = `dev_${platform}`;
+      if (platform === 'desktop') {
+        try {
+          let devId = localStorage.getItem('tripdock_device_id');
+          if (!devId) {
+            devId = 'dev_desktop_' + Math.random().toString(36).slice(2, 10);
+            localStorage.setItem('tripdock_device_id', devId);
+          }
+          key = devId;
+        } catch {
+          key = 'dev_desktop';
+        }
+      }
+
       const nextTokens = { ...(state.profile?.fcmTokens || {}) };
+      // 自動清理同裝置／同平台舊 Token 與相同 Token，避免清快取或重裝 PWA 後累積重複推播
+      Object.keys(nextTokens).forEach((k) => {
+        const entry = nextTokens[k];
+        if (!entry || entry.token === token) {
+          delete nextTokens[k];
+          return;
+        }
+        if ((platform === 'ios_pwa' || platform === 'android') && entry.platform === platform) {
+          delete nextTokens[k];
+          return;
+        }
+        if (platform === 'desktop' && entry.platform === 'desktop' && k.startsWith('tok_')) {
+          delete nextTokens[k];
+        }
+      });
+
       nextTokens[key] = { token, platform, updatedAt: new Date().toISOString() };
       await updateDoc(doc(db, 'users', state.user.uid), {
         fcmTokens: nextTokens,

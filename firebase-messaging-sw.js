@@ -3,7 +3,7 @@ importScripts('./js/config.js');
 importScripts('https://www.gstatic.com/firebasejs/11.6.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/11.6.0/firebase-messaging-compat.js');
 
-const CACHE_NAME = 'tripdock-shell-v3-13';
+const CACHE_NAME = 'tripdock-shell-v3-14';
 const SHELL_ASSETS = [
   './',
   './index.html',
@@ -54,9 +54,11 @@ if (cfg && cfg.apiKey && cfg.apiKey !== 'YOUR_API_KEY') {
   firebase.initializeApp(cfg);
   const messaging = firebase.messaging();
   messaging.onBackgroundMessage((payload) => {
-    const title = (payload.notification && payload.notification.title) || 'TripDock 通知';
-    const body = (payload.notification && payload.notification.body) || '';
-    const link = (payload.data && payload.data.url) || './';
+    // 若推播本身已含 notification 欄位，Firebase SDK 會自動顯示系統通知，直接略過避免重複彈出兩則
+    if (payload && payload.notification) return;
+    const title = (payload && payload.data && payload.data.title) || 'TripDock 通知';
+    const body = (payload && payload.data && payload.data.body) || '';
+    const link = (payload && payload.data && payload.data.url) || './';
     self.registration.showNotification(title, {
       body,
       icon: './icons/icon-192.png',
@@ -68,6 +70,7 @@ if (cfg && cfg.apiKey && cfg.apiKey !== 'YOUR_API_KEY') {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const targetUrl = (event.notification.data && event.notification.data.url) || './';
+  const d = event.notification.data || {};
+  const targetUrl = d.url || (d.FCM_MSG && d.FCM_MSG.data && d.FCM_MSG.data.url) || './';
   event.waitUntil(clients.openWindow(targetUrl));
 });

@@ -718,7 +718,7 @@ function renderAccommodationBanner(trip, stay) {
     return `
       <div class="bg-white rounded-2xl border border-dashed border-slate-300 px-4 py-3 flex items-center justify-between">
         <span class="text-xs text-slate-500">尚未設定住宿與分房資訊</span>
-        <button id="btn-add-room-shortcut" class="px-3 py-1.5 rounded-xl glass-btn-teal-soft text-xs font-semibold">＋ 新增房號</button>
+        <button id="btn-add-room-shortcut" class="px-3 py-1.5 rounded-xl glass-btn-teal-soft text-xs font-semibold">＋ 新增/編輯房間</button>
       </div>
     `;
   }
@@ -741,7 +741,7 @@ function renderAccommodationBanner(trip, stay) {
       </div>
       ${isAdmin() ? `
         <button id="btn-add-room-shortcut" class="shrink-0 px-3 py-1.5 rounded-xl glass-btn-teal-soft text-xs font-semibold">
-          ＋ 新增房號
+          ＋ 新增/編輯房間
         </button>
       ` : ''}
     </div>
@@ -1186,7 +1186,7 @@ function renderAdminTab(trip) {
       <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
         <div class="flex items-center justify-between">
           <h3 class="text-sm font-bold text-slate-900">住宿按晚分房與房號</h3>
-          <button id="btn-manage-rooms" class="px-3 py-1.5 rounded-xl glass-btn-primary text-xs font-semibold">＋ 新增房號</button>
+          <button id="btn-manage-rooms" class="px-3 py-1.5 rounded-xl glass-btn-primary text-xs font-semibold">＋ 新增/編輯房間</button>
         </div>
         <div class="space-y-2">
           ${dates.map((d, idx) => {
@@ -2182,7 +2182,7 @@ function bindGlobalEvents() {
     showToast('已報平安', 'success');
   });
 
-  // 住宿卡片與管理員 ＋新增房號
+  // 住宿卡片與管理員 ＋新增/編輯房間
   document.getElementById('btn-add-room-shortcut')?.addEventListener('click', (e) => {
     e.stopPropagation();
     const trip = activeTrip();

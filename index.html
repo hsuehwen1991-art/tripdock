@@ -56,6 +56,27 @@
       min-width: 0;
       box-sizing: border-box;
     }
+    /* 修正 iOS Safari 原生日期/時間欄位撐出彈窗與文字置中問題 */
+    input[type="date"],
+    input[type="time"] {
+      -webkit-appearance: none !important;
+      appearance: none !important;
+      display: block !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      min-width: 0 !important;
+      min-height: 40px;
+      line-height: 1.4;
+      box-sizing: border-box !important;
+      overflow: hidden;
+      text-align: left;
+    }
+    input[type="date"]::-webkit-date-and-time-value,
+    input[type="time"]::-webkit-date-and-time-value {
+      text-align: left;
+      min-width: 0;
+      margin: 0;
+    }
 
     /* ===== 輕量版 Liquid Glass 材質（僅套用於導覽列、分頁列與重點按鈕） ===== */
     .glass-header {
@@ -190,6 +211,6 @@
       </div>
     </div>
   </div>
-  <script type="module" src="./js/app.js"></script>
+  <script type="module" src="./js/app.js?v=3.7"></script>
 </body>
 </html>

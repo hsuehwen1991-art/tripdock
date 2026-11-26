@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>TripDock｜旅行資訊綜合管理系統</title>
+  <meta name="theme-color" content="#0f766e" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="TripDock" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+  <link rel="icon" type="image/png" href="./icons/icon-192.png" />
+
+  <!-- Tailwind CSS + Typography (供說明書 Markdown 排版) -->
+  <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0fdfa',
+              100: '#ccfbf1',
+              500: '#14b8a6',
+              600: '#0d9488',
+              700: '#0f766e',
+              900: '#134e4a'
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <!-- Marked.js 渲染內建 USER_GUIDE.md -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- 唯一設定檔（網頁與 Service Worker 共用） -->
+  <script src="./js/config.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", sans-serif; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen">
+  <div id="app">
+    <div class="min-h-screen flex items-center justify-center">
+      <div class="text-center space-y-3">
+        <div class="w-12 h-12 rounded-2xl bg-teal-600 mx-auto animate-pulse"></div>
+        <p class="text-sm text-slate-500">TripDock 載入中...</p>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>

@@ -262,17 +262,26 @@ function subscribeTrips(onFirstSnap = null) {
     state.trips = list;
     finishFirst();
 
-    // 檢查 URL hash 自動定位旅行與分頁（或審核彈窗）
+    // 檢查 URL hash 自動定位旅行、邀請回應或帳號管理彈窗
     const hashStr = window.location.hash || '';
     const hashMatch = hashStr.match(/trip=([^&]+)/);
     const tabMatch = hashStr.match(/tab=([^&]+)/);
-    if (!state.activeTripId && hashMatch && list.some((t) => t.id === hashMatch[1])) {
+    if (hashStr.includes('action=tripInvitation') && hashMatch && !state.modal) {
+      const inviteTripId = hashMatch[1];
+      window.location.hash = '';
+      const invNotif = (state.profile?.notifications || []).find(
+        (n) => n.targetType === 'tripInvitation' && n.tripId === inviteTripId
+      );
+      if (invNotif) {
+        state.modal = { type: 'tripInvitation', data: { notif: invNotif } };
+      }
+    } else if (!state.activeTripId && hashMatch && list.some((t) => t.id === hashMatch[1])) {
       selectTrip(hashMatch[1], tabMatch ? tabMatch[1] : 'timeline');
       return;
     }
     if (hashStr.includes('action=deletionReview') && isAdmin() && !state.modal) {
       window.location.hash = '';
-      state.modal = { type: 'deletionReview', data: {} };
+      state.modal = { type: 'accountManagement', data: {} };
     }
     if (state.activeTripId && !list.some((t) => t.id === state.activeTripId)) {
       state.activeTripId = null;
@@ -485,6 +494,14 @@ async function handleSubscribePush() {
 async function navigateFromNotification(notif) {
   if (!notif) return;
   const { targetType, tripId } = notif;
+  if (targetType === 'tripInvitation' && tripId) {
+    const matched = (state.profile?.notifications || []).find(
+      (n) => (notif.id && n.id === notif.id) || (n.targetType === 'tripInvitation' && n.tripId === tripId)
+    ) || notif;
+    state.modal = { type: 'tripInvitation', data: { notif: matched } };
+    render();
+    return;
+  }
   if ((targetType === 'settlement' || targetType === 'trip') && tripId) {
     if (state.trips.some((t) => t.id === tripId)) {
       selectTrip(tripId, targetType === 'settlement' ? 'settlement' : 'timeline');
@@ -495,7 +512,7 @@ async function navigateFromNotification(notif) {
   }
   if (targetType === 'deletionReview' && isAdmin()) {
     await loadAllUsersIfAdmin();
-    state.modal = { type: 'deletionReview', data: {} };
+    state.modal = { type: 'accountManagement', data: {} };
     render();
     return;
   }
@@ -852,21 +869,40 @@ function renderTripList() {
         <p class="text-xs text-slate-400 py-1">目前沒有通知訊息</p>
       ` : `
         <div class="space-y-1.5">
-          ${visibleNotifs.map((n) => `
-            <div data-open-notif="${esc(n.id)}" class="cursor-pointer p-2.5 rounded-xl border transition flex items-start gap-2.5 ${
-              n.read ? 'bg-slate-50/60 border-slate-100 hover:bg-slate-100/70' : 'bg-teal-50/45 border-teal-200/80 hover:bg-teal-50'
-            }">
-              <span class="w-2 h-2 rounded-full mt-1.5 shrink-0 ${n.read ? 'bg-slate-300' : 'bg-teal-600'}"></span>
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center justify-between gap-2">
-                  <p class="text-xs font-bold ${n.read ? 'text-slate-600' : 'text-slate-900'} truncate">${esc(n.title)}</p>
-                  <span class="text-[11px] text-slate-400 shrink-0">${esc(formatNotifTime(n.createdAt))}</span>
+          ${visibleNotifs.map((n) => {
+            const isPendingInvite = n.targetType === 'tripInvitation' && n.inviteStatus === 'pending';
+            const inviteTag =
+              n.targetType === 'tripInvitation' && n.inviteStatus === 'accepted'
+                ? `<span class="inline-block mt-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-700">已確認參加</span>`
+                : n.targetType === 'tripInvitation' && n.inviteStatus === 'declined'
+                ? `<span class="inline-block mt-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-200 text-slate-600">已婉拒</span>`
+                : '';
+
+            return `
+              <div data-open-notif="${esc(n.id)}" class="cursor-pointer p-2.5 rounded-xl border transition space-y-2 ${
+                n.read ? 'bg-slate-50/60 border-slate-100 hover:bg-slate-100/70' : 'bg-teal-50/45 border-teal-200/80 hover:bg-teal-50'
+              }">
+                <div class="flex items-start gap-2.5">
+                  <span class="w-2 h-2 rounded-full mt-1.5 shrink-0 ${n.read ? 'bg-slate-300' : 'bg-teal-600'}"></span>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center justify-between gap-2">
+                      <p class="text-xs font-bold ${n.read ? 'text-slate-600' : 'text-slate-900'} truncate">${esc(n.title)}</p>
+                      <span class="text-[11px] text-slate-400 shrink-0">${esc(formatNotifTime(n.createdAt))}</span>
+                    </div>
+                    <p class="text-xs ${n.read ? 'text-slate-500' : 'text-slate-700'} mt-0.5 line-clamp-2">${esc(n.body)}</p>
+                    ${inviteTag}
+                  </div>
+                  <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-slate-400 shrink-0 mt-1"></i>
                 </div>
-                <p class="text-xs ${n.read ? 'text-slate-500' : 'text-slate-700'} mt-0.5 line-clamp-2">${esc(n.body)}</p>
+                ${isPendingInvite ? `
+                  <div class="flex items-center justify-end gap-2 pl-4">
+                    <button type="button" data-invite-reply="decline" data-invite-trip="${esc(n.tripId)}" data-invite-notif="${esc(n.id)}" class="px-3 py-1.5 rounded-xl glass-btn-subtle text-xs font-semibold">婉拒</button>
+                    <button type="button" data-invite-reply="accept" data-invite-trip="${esc(n.tripId)}" data-invite-notif="${esc(n.id)}" class="px-3.5 py-1.5 rounded-xl glass-btn-primary text-xs font-semibold">確認參加</button>
+                  </div>
+                ` : ''}
               </div>
-              <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-slate-400 shrink-0 mt-1"></i>
-            </div>
-          `).join('')}
+            `;
+          }).join('')}
         </div>
         ${notifs.length > 3 ? `
           <button id="btn-toggle-notif-expand" class="w-full py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-600">
@@ -899,9 +935,16 @@ function renderTripList() {
           <p class="text-xs text-slate-500 mt-0.5">點擊進入查看個人並行時間軸與分帳</p>
         </div>
         ${isAdmin() ? `
-          <button id="btn-create-trip" class="px-3.5 py-2 rounded-xl glass-btn-primary text-xs font-semibold flex items-center gap-1.5">
-            <i data-lucide="plus" class="w-4 h-4"></i>建立旅行
-          </button>
+          <div class="flex items-center gap-2 shrink-0">
+            <button id="btn-open-account-mgmt" class="px-3 py-2 rounded-xl glass-btn-subtle text-xs font-semibold flex items-center gap-1.5">
+              <i data-lucide="users" class="w-4 h-4"></i>
+              <span>帳號管理</span>
+              ${pendingDeletions.length > 0 ? `<span class="px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-bold leading-none">${pendingDeletions.length}</span>` : ''}
+            </button>
+            <button id="btn-create-trip" class="px-3.5 py-2 rounded-xl glass-btn-primary text-xs font-semibold flex items-center gap-1.5">
+              <i data-lucide="plus" class="w-4 h-4"></i>建立旅行
+            </button>
+          </div>
         ` : ''}
       </div>
 
@@ -1450,24 +1493,62 @@ function renderAdminTab(trip) {
 
   return `
     <div class="space-y-5">
-      <!-- 1. 旅行歸戶成員管理 -->
+      <!-- 1. 旅行成員邀請與歸戶管理 -->
       <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
-        <h3 class="text-sm font-bold text-slate-900">旅行成員歸戶</h3>
+        <div class="flex items-center justify-between gap-2">
+          <div>
+            <h3 class="text-sm font-bold text-slate-900">旅行成員邀請與名單</h3>
+            <p class="text-[11px] text-slate-500 mt-0.5">邀請一般成員後將發送推播，對方確認參加才正式加入</p>
+          </div>
+          <button id="btn-admin-open-accounts" class="shrink-0 px-3 py-1.5 rounded-xl glass-btn-subtle text-xs font-semibold">帳號管理</button>
+        </div>
         <div class="grid sm:grid-cols-2 gap-2">
           ${state.allUsers.map((u) => {
-            const checked = activeSet.has(u.id);
-            return `
-              <label class="flex items-center justify-between p-2.5 rounded-xl border ${checked ? 'border-teal-300 bg-teal-50/40' : 'border-slate-200'} cursor-pointer text-xs">
-                <div>
-                  <p class="font-semibold text-slate-800">${esc(u.displayName)}</p>
-                  <p class="text-[11px] text-slate-500">${esc(u.email)}</p>
+            const isActive = activeSet.has(u.id);
+            const isPending = (trip.pendingMemberIds || []).includes(u.id);
+            const isUserAdmin = u.role === 'admin';
+
+            let statusTag = '';
+            let actionBtns = '';
+
+            if (isUserAdmin) {
+              statusTag = isActive
+                ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-teal-100 text-teal-800">管理員・已加入</span>`
+                : `<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600">管理員</span>`;
+              actionBtns = isActive
+                ? `<button type="button" data-trip-remove-member="${esc(u.id)}" class="px-2.5 py-1.5 rounded-xl glass-btn-subtle text-xs font-semibold text-slate-600">移出</button>`
+                : `<button type="button" data-trip-add-admin="${esc(u.id)}" class="px-3 py-1.5 rounded-xl glass-btn-primary text-xs font-semibold">加入</button>`;
+            } else if (isActive) {
+              statusTag = `<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-700">已加入</span>`;
+              actionBtns = `<button type="button" data-trip-remove-member="${esc(u.id)}" class="px-2.5 py-1.5 rounded-xl glass-btn-subtle text-xs font-semibold text-rose-600">移出</button>`;
+            } else if (isPending) {
+              statusTag = `<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800">已邀請・待回覆</span>`;
+              actionBtns = `
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <button type="button" data-trip-invite-member="${esc(u.id)}" class="px-2.5 py-1.5 rounded-xl glass-btn-teal-soft text-xs font-semibold">提醒</button>
+                  <button type="button" data-trip-cancel-invite="${esc(u.id)}" class="px-2.5 py-1.5 rounded-xl glass-btn-subtle text-xs font-semibold text-slate-500">取消</button>
                 </div>
-                <input type="checkbox" data-member-checkbox="${esc(u.id)}" ${checked ? 'checked' : ''} class="w-4 h-4 accent-teal-600" />
-              </label>
+              `;
+            } else {
+              actionBtns = `<button type="button" data-trip-invite-member="${esc(u.id)}" class="shrink-0 px-3 py-1.5 rounded-xl glass-btn-primary text-xs font-semibold">發送邀請</button>`;
+            }
+
+            return `
+              <div class="flex items-center justify-between gap-2 p-2.5 rounded-xl border ${
+                isActive ? 'border-teal-300 bg-teal-50/35' : isPending ? 'border-amber-200 bg-amber-50/40' : 'border-slate-200'
+              } text-xs">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    <p class="font-semibold text-slate-800 truncate">${esc(u.displayName)}</p>
+                    ${statusTag}
+                  </div>
+                  <p class="text-[11px] text-slate-500 truncate mt-0.5">${esc(u.email)}</p>
+                </div>
+                ${actionBtns}
+              </div>
             `;
           }).join('')}
         </div>
-        <button id="btn-save-members" class="px-4 py-2 rounded-xl glass-btn-primary text-xs font-semibold">儲存歸戶名單</button>
       </div>
 
       <!-- 2. 按晚住宿與分房管理 -->
@@ -1520,7 +1601,9 @@ function renderModal() {
   else if (type === 'itineraryForm') body = renderItineraryFormModalContent(data);
   else if (type === 'expenseForm') body = renderExpenseFormModalContent(data);
   else if (type === 'archive') body = renderArchiveModalContent();
-  else if (type === 'deletionReview') body = renderDeletionReviewModalContent();
+  else if (type === 'deletionReview' || type === 'accountManagement') body = renderAccountManagementModalContent();
+  else if (type === 'adminDeleteAccount') body = renderAdminDeleteAccountModalContent(data);
+  else if (type === 'tripInvitation') body = renderTripInvitationModalContent(data);
 
   const isFreshOpen = !state.lastModalType;
   const isSwitchFlip = Boolean(state.lastModalType && state.lastModalType !== type);
@@ -1636,11 +1719,11 @@ function renderProfileModalContent() {
       ${isAdmin() ? `
         <div class="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
           <div>
-            <p class="text-xs font-semibold text-slate-700">成員帳號刪除審核</p>
-            <p class="text-[11px] text-slate-500 mt-0.5">${pendingCount > 0 ? `目前有 ${pendingCount} 筆待審核申請` : '目前沒有待審核的刪除申請'}</p>
+            <p class="text-xs font-semibold text-slate-700">帳號管理與刪除審核</p>
+            <p class="text-[11px] text-slate-500 mt-0.5">${pendingCount > 0 ? `目前有 ${pendingCount} 筆刪除申請待審核` : `共 ${state.allUsers.length} 個已註冊帳號`}</p>
           </div>
-          <button id="btn-profile-deletion-review" class="px-3.5 py-2 rounded-xl ${pendingCount > 0 ? 'glass-btn-primary' : 'glass-btn-subtle'} text-xs font-semibold shrink-0">
-            檢視審核${pendingCount > 0 ? ` ${pendingCount}` : ''}
+          <button id="btn-profile-account-mgmt" class="px-3.5 py-2 rounded-xl ${pendingCount > 0 ? 'glass-btn-primary' : 'glass-btn-subtle'} text-xs font-semibold shrink-0">
+            帳號管理${pendingCount > 0 ? ` ${pendingCount}` : ''}
           </button>
         </div>
       ` : `
@@ -1673,57 +1756,172 @@ function renderProfileModalContent() {
   `;
 }
 
-/* ----------------------------- Modal: 管理員審核刪除帳號 ----------------------------- */
-function renderDeletionReviewModalContent() {
-  const pending = state.allUsers.filter((u) => u.role !== 'admin' && u.deletionRequested === true);
+/* ----------------------------- Modal: 管理員帳號管理（全註冊帳號、邀請、審核與主動刪除） ----------------------------- */
+function renderAccountManagementModalContent() {
+  const sortedUsers = [...state.allUsers].sort((a, b) => {
+    const aReq = a.role !== 'admin' && a.deletionRequested ? 0 : a.role !== 'admin' ? 1 : 2;
+    const bReq = b.role !== 'admin' && b.deletionRequested ? 0 : b.role !== 'admin' ? 1 : 2;
+    if (aReq !== bReq) return aReq - bReq;
+    return (a.displayName || '').localeCompare(b.displayName || '');
+  });
+
+  const openTrips = state.trips.filter((t) => t.status !== 'settled');
 
   return `
-    ${modalHeader('帳號刪除審核')}
-    <div class="p-5 overflow-y-auto td-modal-scroll space-y-4">
-      ${pending.length === 0 ? `
+    ${modalHeader(`帳號管理｜共 ${sortedUsers.length} 位`)}
+    <div class="p-5 overflow-y-auto td-modal-scroll space-y-3.5">
+      ${sortedUsers.length === 0 ? `
         <div class="py-8 text-center space-y-1.5">
-          <p class="text-sm font-semibold text-slate-700">目前沒有待審核的刪除申請</p>
-          <p class="text-xs text-slate-400">一般成員提出申請時會透過推播通知你</p>
+          <p class="text-sm font-semibold text-slate-700">尚無註冊帳號資料</p>
         </div>
-      ` : pending.map((u) => {
-        const settlingTrips = state.trips.filter(
-          (t) => t.status === 'settling' && (t.activeMemberIds || []).includes(u.id)
-        );
-        const activeTrips = state.trips.filter(
-          (t) => t.status === 'active' && (t.activeMemberIds || []).includes(u.id)
+      ` : sortedUsers.map((u) => {
+        const isUserAdmin = u.role === 'admin';
+        const hasDeletionReq = !isUserAdmin && u.deletionRequested === true;
+        const hasPush = Boolean(u.pushSubscribed || Object.keys(u.fcmTokens || {}).length > 0);
+        const joinedTrips = state.trips.filter((t) => (t.activeMemberIds || []).includes(u.id));
+        const pendingTrips = state.trips.filter((t) => (t.pendingMemberIds || []).includes(u.id));
+        const settlingTrips = joinedTrips.filter((t) => t.status === 'settling');
+        const invitableTrips = openTrips.filter(
+          (t) => !(t.activeMemberIds || []).includes(u.id) && !(t.pendingMemberIds || []).includes(u.id)
         );
 
         return `
-          <div class="p-4 rounded-2xl border border-slate-200 bg-slate-50/70 space-y-3">
-            <div>
-              <p class="text-sm font-bold text-slate-900">${esc(u.displayName || '成員')}</p>
-              <p class="text-xs text-slate-500 mt-0.5">${esc(u.email)}</p>
+          <div class="p-4 rounded-2xl border ${hasDeletionReq ? 'border-amber-300 bg-amber-50/45' : 'border-slate-200 bg-slate-50/60'} space-y-3">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <p class="text-sm font-bold text-slate-900 truncate">${esc(u.displayName || '成員')}</p>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold ${isUserAdmin ? 'bg-teal-100 text-teal-800' : 'bg-slate-200 text-slate-700'}">
+                    ${isUserAdmin ? '管理員' : '一般成員'}
+                  </span>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold ${hasPush ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}">
+                    ${hasPush ? '已訂閱推播' : '未訂閱推播'}
+                  </span>
+                  ${hasDeletionReq ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-200 text-amber-900">申請刪除中</span>` : ''}
+                </div>
+                <p class="text-xs text-slate-500 mt-0.5 truncate">${esc(u.email)}</p>
+              </div>
             </div>
 
-            ${settlingTrips.length > 0 ? `
-              <div class="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 space-y-1">
-                <p class="font-bold">尚有結帳收款中的旅行，建議確認帳務結清後再移除</p>
-                <p>${esc(settlingTrips.map((t) => t.name).join('、'))}</p>
+            <div class="text-xs text-slate-600 space-y-1">
+              <p>已參與旅行：${joinedTrips.length > 0 ? esc(joinedTrips.map((t) => t.name).join('、')) : '<span class="text-slate-400">尚未加入</span>'}</p>
+              ${pendingTrips.length > 0 ? `<p class="text-amber-700">待回覆邀請：${esc(pendingTrips.map((t) => t.name).join('、'))}</p>` : ''}
+            </div>
+
+            ${hasDeletionReq && settlingTrips.length > 0 ? `
+              <div class="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800">
+                尚有結帳收款中的旅行：${esc(settlingTrips.map((t) => t.name).join('、'))}
               </div>
             ` : ''}
 
-            ${activeTrips.length > 0 ? `
-              <div class="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
-                進行中旅行：${esc(activeTrips.map((t) => t.name).join('、'))}
+            ${!isUserAdmin && invitableTrips.length > 0 ? `
+              <div class="flex items-center gap-2 pt-1">
+                <select data-acct-invite-select="${esc(u.id)}" class="flex-1 px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs bg-white">
+                  ${invitableTrips.map((t) => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('')}
+                </select>
+                <button type="button" data-acct-send-invite="${esc(u.id)}" class="shrink-0 px-3 py-1.5 rounded-xl glass-btn-teal-soft text-xs font-semibold">發送邀請</button>
               </div>
             ` : ''}
 
-            <p class="text-[11px] text-slate-500 leading-relaxed">
-              核准後會徹底刪除該登入帳號，並自各旅行歸戶名單移出，歷史足跡與封存帳務仍會保留其舊顯示名稱。
-            </p>
-
-            <div class="flex items-center justify-end gap-2 pt-1">
-              <button data-review-deletion="reject" data-target-uid="${esc(u.id)}" class="px-3.5 py-2 rounded-xl glass-btn-subtle text-xs font-semibold">駁回申請</button>
-              <button data-review-deletion="approve" data-target-uid="${esc(u.id)}" class="px-3.5 py-2 rounded-xl glass-btn-danger text-xs font-semibold">核准移除</button>
-            </div>
+            ${!isUserAdmin ? `
+              <div class="flex items-center justify-end gap-2 pt-1 border-t border-slate-200/70">
+                ${hasDeletionReq ? `
+                  <button type="button" data-review-deletion="reject" data-target-uid="${esc(u.id)}" class="px-3 py-1.5 rounded-xl glass-btn-subtle text-xs font-semibold">駁回刪除申請</button>
+                  <button type="button" data-review-deletion="approve" data-target-uid="${esc(u.id)}" class="px-3 py-1.5 rounded-xl glass-btn-danger text-xs font-semibold">核准移除</button>
+                ` : `
+                  <button type="button" data-admin-force-delete="${esc(u.id)}" class="px-3 py-1.5 rounded-xl glass-btn-danger text-xs font-semibold">主動刪除帳號</button>
+                `}
+              </div>
+            ` : ''}
           </div>
         `;
       }).join('')}
+    </div>
+  `;
+}
+
+/* ----------------------------- Modal: 管理員主動刪除帳號（附最後感謝詞推播） ----------------------------- */
+function renderAdminDeleteAccountModalContent(data) {
+  const targetUser = state.allUsers.find((u) => u.id === data?.targetUid);
+  if (!targetUser) {
+    return `${modalHeader('主動刪除帳號')}<div class="p-5 text-xs text-slate-500">找不到該帳號資料</div>`;
+  }
+  const settlingTrips = state.trips.filter(
+    (t) => t.status === 'settling' && (t.activeMemberIds || []).includes(targetUser.id)
+  );
+  const activeTrips = state.trips.filter(
+    (t) => t.status === 'active' && (t.activeMemberIds || []).includes(targetUser.id)
+  );
+  const defaultThankYou = `感謝 ${targetUser.displayName || '你'} 曾與大家一起透過 TripDock 規劃旅程，祝福你未來一切順心、旅途平安愉快！管理員已完成你的帳號移除作業。`;
+
+  return `
+    ${modalHeader('主動刪除成員帳號')}
+    <form id="form-admin-force-delete" class="p-5 overflow-y-auto td-modal-scroll space-y-4">
+      <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
+        <p class="text-sm font-bold text-slate-900">${esc(targetUser.displayName || '成員')}</p>
+        <p class="text-xs text-slate-500 mt-0.5">${esc(targetUser.email)}</p>
+      </div>
+
+      ${settlingTrips.length > 0 ? `
+        <div class="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 space-y-1">
+          <p class="font-bold">提醒：該成員尚有結帳收款中的旅行</p>
+          <p>${esc(settlingTrips.map((t) => t.name).join('、'))}</p>
+        </div>
+      ` : ''}
+
+      ${activeTrips.length > 0 ? `
+        <div class="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
+          進行中旅行：${esc(activeTrips.map((t) => t.name).join('、'))}
+        </div>
+      ` : ''}
+
+      <div>
+        <label class="block text-xs font-semibold text-slate-700 mb-1.5">最後一則推播感謝詞</label>
+        <textarea name="thankYouMessage" rows="3" required class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm">${esc(defaultThankYou)}</textarea>
+      </div>
+
+      <p class="text-[11px] text-slate-500 leading-relaxed">
+        此操作無需取得使用者同意。送出後系統會先推播上方感謝詞給對方，再永久刪除其登入帳號並移出旅行名單，歷史足跡與封存帳務仍保留其舊顯示名稱。
+      </p>
+
+      <div class="flex items-center justify-end gap-2 pt-1">
+        <button type="button" id="btn-back-account-mgmt" class="px-3.5 py-2 rounded-xl glass-btn-subtle text-xs font-semibold">返回帳號管理</button>
+        <button type="submit" class="px-4 py-2 rounded-xl glass-btn-danger text-xs font-semibold">發送感謝通知並刪除</button>
+      </div>
+    </form>
+  `;
+}
+
+/* ----------------------------- Modal: 成員回應旅行參加邀請 ----------------------------- */
+function renderTripInvitationModalContent(data) {
+  const notif = data?.notif;
+  if (!notif) {
+    return `${modalHeader('旅行參加邀請')}<div class="p-5 text-xs text-slate-500">找不到邀請資訊</div>`;
+  }
+  const isPending = notif.inviteStatus === 'pending';
+
+  return `
+    ${modalHeader('旅行參加邀請')}
+    <div class="p-5 overflow-y-auto td-modal-scroll space-y-4">
+      <div class="p-4 rounded-2xl bg-teal-50/50 border border-teal-200 space-y-1.5">
+        <p class="text-base font-bold text-slate-900">${esc(notif.tripName || notif.title)}</p>
+        ${notif.tripLocation || notif.tripDates ? `
+          <p class="text-xs text-slate-600">${esc([notif.tripLocation, notif.tripDates].filter(Boolean).join('｜'))}</p>
+        ` : ''}
+        <p class="text-xs text-slate-600 pt-1 leading-relaxed">${esc(notif.body)}</p>
+      </div>
+
+      ${isPending ? `
+        <p class="text-xs text-slate-500">確認參加後，這趟旅行會立即出現在你的首頁清單，並開放查看行程與分帳。</p>
+        <div class="grid grid-cols-2 gap-2.5 pt-1">
+          <button type="button" data-modal-invite-reply="decline" class="py-2.5 rounded-xl glass-btn-subtle text-xs font-semibold">婉拒邀請</button>
+          <button type="button" data-modal-invite-reply="accept" class="py-2.5 rounded-xl glass-btn-primary text-xs font-semibold">確認參加</button>
+        </div>
+      ` : `
+        <div class="p-3 rounded-xl bg-slate-100 text-xs text-slate-600 text-center font-medium">
+          ${notif.inviteStatus === 'accepted' ? '你已確認參加此趟旅行' : '你已婉拒此趟旅行邀請'}
+        </div>
+      `}
     </div>
   `;
 }
@@ -2400,6 +2598,12 @@ function bindGlobalEvents() {
   });
 
   // 通知中心互動事件
+  document.querySelectorAll('[data-invite-reply]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      handleRespondTripInvitation(btn.dataset.inviteTrip, btn.dataset.inviteReply, btn.dataset.inviteNotif);
+    });
+  });
   document.querySelectorAll('[data-open-notif]').forEach((el) => {
     el.addEventListener('click', () => handleClickNotification(el.dataset.openNotif));
   });
@@ -2410,12 +2614,14 @@ function bindGlobalEvents() {
     render();
   });
 
-  // 首頁刪除帳號審核提醒、建立與進入旅行
-  document.getElementById('btn-open-deletion-review')?.addEventListener('click', async () => {
+  // 首頁帳號管理、刪除帳號審核提醒、建立與進入旅行
+  const openAccountMgmt = async () => {
     await loadAllUsersIfAdmin();
-    state.modal = { type: 'deletionReview', data: {} };
+    state.modal = { type: 'accountManagement', data: {} };
     render();
-  });
+  };
+  document.getElementById('btn-open-account-mgmt')?.addEventListener('click', openAccountMgmt);
+  document.getElementById('btn-open-deletion-review')?.addEventListener('click', openAccountMgmt);
   document.getElementById('btn-create-trip')?.addEventListener('click', () => {
     state.modal = { type: 'createTrip', data: {} };
     render();
@@ -2573,7 +2779,31 @@ function bindGlobalEvents() {
   });
 
   // 管理員面板事件
-  document.getElementById('btn-save-members')?.addEventListener('click', handleSaveMembers);
+  document.getElementById('btn-admin-open-accounts')?.addEventListener('click', async () => {
+    await loadAllUsersIfAdmin();
+    state.modal = { type: 'accountManagement', data: {} };
+    render();
+  });
+  document.querySelectorAll('[data-trip-invite-member]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (state.activeTripId) handleSendTripInvitation(state.activeTripId, btn.dataset.tripInviteMember);
+    });
+  });
+  document.querySelectorAll('[data-trip-cancel-invite]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (state.activeTripId) handleCancelTripInvitation(state.activeTripId, btn.dataset.tripCancelInvite);
+    });
+  });
+  document.querySelectorAll('[data-trip-remove-member]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (state.activeTripId) handleRemoveTripMember(state.activeTripId, btn.dataset.tripRemoveMember);
+    });
+  });
+  document.querySelectorAll('[data-trip-add-admin]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (state.activeTripId) handleAddAdminToTrip(state.activeTripId, btn.dataset.tripAddAdmin);
+    });
+  });
   document.getElementById('btn-delete-current-trip')?.addEventListener('click', () => {
     if (state.activeTripId) handleDeleteTrip(state.activeTripId);
   });
@@ -2672,9 +2902,9 @@ function bindModalEvents() {
         showToast('舊密碼驗證失敗', 'error');
       }
     });
-    document.getElementById('btn-profile-deletion-review')?.addEventListener('click', async () => {
+    document.getElementById('btn-profile-account-mgmt')?.addEventListener('click', async () => {
       await loadAllUsersIfAdmin();
-      state.modal = { type: 'deletionReview', data: {} };
+      state.modal = { type: 'accountManagement', data: {} };
       render();
     });
     document.getElementById('btn-request-deletion')?.addEventListener('click', handleRequestAccountDeletion);
@@ -2686,10 +2916,47 @@ function bindModalEvents() {
     });
   }
 
-  if (type === 'deletionReview') {
+  if (type === 'deletionReview' || type === 'accountManagement') {
     document.querySelectorAll('[data-review-deletion]').forEach((btn) => {
       btn.addEventListener('click', () => {
         handleReviewAccountDeletion(btn.dataset.targetUid, btn.dataset.reviewDeletion);
+      });
+    });
+    document.querySelectorAll('[data-admin-force-delete]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        state.modal = { type: 'adminDeleteAccount', data: { targetUid: btn.dataset.adminForceDelete } };
+        render();
+      });
+    });
+    document.querySelectorAll('[data-acct-send-invite]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const uid = btn.dataset.acctSendInvite;
+        const sel = document.querySelector(`[data-acct-invite-select="${uid}"]`);
+        if (sel && sel.value) {
+          handleSendTripInvitation(sel.value, uid);
+        }
+      });
+    });
+  }
+
+  if (type === 'adminDeleteAccount') {
+    document.getElementById('btn-back-account-mgmt')?.addEventListener('click', () => {
+      state.modal = { type: 'accountManagement', data: {} };
+      render();
+    });
+    document.getElementById('form-admin-force-delete')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = String(new FormData(e.target).get('thankYouMessage') || '').trim();
+      await handleAdminForceDeleteAccount(data.targetUid, msg);
+    });
+  }
+
+  if (type === 'tripInvitation') {
+    document.querySelectorAll('[data-modal-invite-reply]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const notif = data?.notif;
+        if (!notif) return;
+        handleRespondTripInvitation(notif.tripId, btn.dataset.modalInviteReply, notif.id);
       });
     });
   }
@@ -3335,31 +3602,142 @@ async function handleArchiveTrip(thankYouMessage) {
   render();
 }
 
-async function handleSaveMembers() {
-  const trip = activeTrip();
-  const checkedIds = Array.from(document.querySelectorAll('[data-member-checkbox]:checked')).map((c) => c.dataset.memberCheckbox);
-  const nextDir = { ...(trip.memberDirectory || {}) };
-
-  Object.keys(nextDir).forEach((uid) => {
-    nextDir[uid] = { ...nextDir[uid], isActive: checkedIds.includes(uid) };
-  });
-  checkedIds.forEach((uid) => {
-    const u = state.allUsers.find((x) => x.id === uid);
-    if (u) {
-      nextDir[uid] = {
-        displayName: u.displayName,
-        isActive: true,
-        joinedAt: nextDir[uid]?.joinedAt || new Date().toISOString()
-      };
+async function handleSendTripInvitation(tripId, targetUid) {
+  if (!isAdmin() || !tripId || !targetUid) return;
+  if (!cfg.gasBridgeUrl) {
+    showToast('需先部署 GAS 跳板才能發送邀請推播', 'error');
+    return;
+  }
+  try {
+    showToast('正在發送旅行參加邀請...');
+    const res = await callGasBridge('sendTripInvitation', { tripId, targetUid });
+    if (!res.ok) {
+      showToast(res.error || '發送邀請失敗', 'error');
+      return;
     }
-  });
+    showToast(
+      res.sent > 0 ? '已發送邀請推播，待對方確認參加' : '已送達對方通知中心，待對方確認參加',
+      'success'
+    );
+    render();
+  } catch (err) {
+    console.error(err);
+    showToast('發送邀請失敗，請稍後再試', 'error');
+  }
+}
 
-  await updateDoc(doc(db, 'trips', trip.id), {
-    activeMemberIds: checkedIds,
+async function handleCancelTripInvitation(tripId, targetUid) {
+  if (!isAdmin() || !tripId || !targetUid) return;
+  const trip = state.trips.find((t) => t.id === tripId);
+  if (!trip) return;
+  const nextPending = (trip.pendingMemberIds || []).filter((id) => id !== targetUid);
+  await updateDoc(doc(db, 'trips', tripId), {
+    pendingMemberIds: nextPending,
+    updatedAt: serverTimestamp()
+  });
+  showToast('已取消該成員邀請');
+}
+
+async function handleAddAdminToTrip(tripId, targetUid) {
+  if (!isAdmin() || !tripId || !targetUid) return;
+  const trip = state.trips.find((t) => t.id === tripId);
+  if (!trip) return;
+  const u = state.allUsers.find((x) => x.id === targetUid);
+  const nextActive = Array.from(new Set([...(trip.activeMemberIds || []), targetUid]));
+  const nextDir = { ...(trip.memberDirectory || {}) };
+  nextDir[targetUid] = {
+    displayName: u?.displayName || state.profile?.displayName || '管理員',
+    isActive: true,
+    joinedAt: nextDir[targetUid]?.joinedAt || new Date().toISOString()
+  };
+  await updateDoc(doc(db, 'trips', tripId), {
+    activeMemberIds: nextActive,
     memberDirectory: nextDir,
     updatedAt: serverTimestamp()
   });
-  showToast('已更新歸戶成員名單', 'success');
+  showToast('已加入旅行名單', 'success');
+}
+
+async function handleRemoveTripMember(tripId, targetUid) {
+  if (!isAdmin() || !tripId || !targetUid) return;
+  const trip = state.trips.find((t) => t.id === tripId);
+  if (!trip) return;
+  const name = memberName(trip, targetUid);
+  const ok = window.confirm(`確定將「${name}」移出此旅行？歷史帳務仍會保留其名稱。`);
+  if (!ok) return;
+
+  const nextActive = (trip.activeMemberIds || []).filter((id) => id !== targetUid);
+  const nextDir = { ...(trip.memberDirectory || {}) };
+  if (nextDir[targetUid]) {
+    nextDir[targetUid] = { ...nextDir[targetUid], isActive: false };
+  }
+  await updateDoc(doc(db, 'trips', tripId), {
+    activeMemberIds: nextActive,
+    memberDirectory: nextDir,
+    updatedAt: serverTimestamp()
+  });
+  showToast(`已將「${name}」移出名單`);
+}
+
+async function handleRespondTripInvitation(tripId, decision, notifId) {
+  if (!tripId || (decision !== 'accept' && decision !== 'decline')) return;
+  if (!cfg.gasBridgeUrl) {
+    showToast('推播跳板未就緒，無法回應邀請', 'error');
+    return;
+  }
+  try {
+    showToast(decision === 'accept' ? '正在確認加入旅行...' : '正在回覆婉拒邀請...');
+    const res = await callGasBridge('respondTripInvitation', { tripId, decision, notifId });
+    if (!res.ok) {
+      showToast(res.error || '回應邀請失敗', 'error');
+      return;
+    }
+    if (state.modal?.type === 'tripInvitation') {
+      closeModal();
+    }
+    showToast(decision === 'accept' ? '已確認參加，旅行將立即出現在首頁！' : '已婉拒此次旅行邀請', 'success');
+  } catch (err) {
+    console.error(err);
+    showToast('回應邀請發生錯誤，請稍後再試', 'error');
+  }
+}
+
+async function handleAdminForceDeleteAccount(targetUid, thankYouMessage) {
+  if (!isAdmin() || !targetUid) return;
+  const targetUser = state.allUsers.find((u) => u.id === targetUid);
+  const label = targetUser ? `${targetUser.displayName} (${targetUser.email})` : targetUid;
+  const ok = window.confirm(
+    `確定主動刪除帳號「${label}」？
+系統會先推播最後一則感謝詞，隨後永久刪除帳號且無法復原。`
+  );
+  if (!ok) return;
+
+  if (!cfg.gasBridgeUrl) {
+    showToast('需先部署 GAS 跳板才能執行主動刪除帳號', 'error');
+    return;
+  }
+
+  try {
+    showToast('正在發送感謝推播並移除帳號...');
+    const res = await callGasBridge('adminForceDeleteAccount', {
+      targetUid,
+      thankYouMessage
+    });
+    if (!res.ok) {
+      showToast(res.error || '刪除帳號失敗', 'error');
+      return;
+    }
+    await loadAllUsersIfAdmin();
+    state.modal = { type: 'accountManagement', data: {} };
+    showToast(
+      res.sent > 0 ? '已發送最後感謝推播並永久刪除該帳號' : '已永久刪除該帳號（對方無有效推播裝置）',
+      'success'
+    );
+    render();
+  } catch (err) {
+    console.error(err);
+    showToast('刪除帳號發生錯誤', 'error');
+  }
 }
 
 function bindTripSwipeGestures() {

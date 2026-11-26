@@ -5,7 +5,7 @@ import {
   EmailAuthProvider, onAuthStateChanged,
   doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
   collection, query, where, orderBy, onSnapshot, writeBatch, serverTimestamp,
-  getToken
+  getToken, onMessage
 } from './firebase.js';
 import {
   MEAL_PERIOD_LABELS, TRANSPORT_MODE_LABELS, TICKETING_OPTIONS, CURRENCIES,
@@ -37,11 +37,15 @@ const state = {
   modal: null, // { type, data }
   animatePage: false,
   animateTab: false,
-  lastModalType: null
+  lastModalType: null,
+  notifExpanded: false,
+  pushBanner: null
 };
 
+let unsubProfile = null;
 let unsubTrips = null;
 let unsubTripDetail = [];
+let unsubForegroundMsg = null;
 
 /* ============================= 工具函式 ============================= */
 const esc = (s) =>
@@ -76,6 +80,79 @@ function renderToast() {
   const bg = state.toast.tone === 'error' ? 'bg-rose-600' : state.toast.tone === 'success' ? 'bg-teal-700' : 'bg-slate-900';
   el.className = `fixed bottom-5 left-1/2 -translate-x-1/2 z-[100] px-4 py-2.5 rounded-full text-sm text-white shadow-lg ${bg}`;
   el.textContent = state.toast.message;
+}
+
+function showPushBanner(banner) {
+  state.pushBanner = banner;
+  renderPushBanner();
+  clearTimeout(showPushBanner._timer);
+  showPushBanner._timer = setTimeout(() => {
+    state.pushBanner = null;
+    renderPushBanner();
+  }, 6500);
+}
+
+function renderPushBanner() {
+  let el = document.getElementById('td-push-banner');
+  if (!state.pushBanner) {
+    if (el) el.remove();
+    return;
+  }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'td-push-banner';
+    document.body.appendChild(el);
+  }
+  const b = state.pushBanner;
+  el.className = 'td-push-banner fixed top-3 left-1/2 -translate-x-1/2 z-[110] w-[calc(100%-24px)] max-w-md bg-white/95 backdrop-blur-md border border-teal-200 rounded-2xl shadow-xl p-3.5 flex items-start gap-3';
+  el.innerHTML = `
+    <div class="w-8 h-8 rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center shrink-0 mt-0.5">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+    </div>
+    <div id="td-push-banner-body" class="flex-1 min-w-0 cursor-pointer">
+      <p class="text-xs font-bold text-slate-900 truncate">${esc(b.title || 'TripDock 通知')}</p>
+      <p class="text-xs text-slate-600 mt-0.5 line-clamp-2">${esc(b.body || '')}</p>
+    </div>
+    <button id="td-push-banner-close" class="p-1 rounded-lg text-slate-400 hover:bg-slate-100 shrink-0 text-xs">✕</button>
+  `;
+  document.getElementById('td-push-banner-close')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    state.pushBanner = null;
+    renderPushBanner();
+  });
+  document.getElementById('td-push-banner-body')?.addEventListener('click', () => {
+    const target = state.pushBanner;
+    state.pushBanner = null;
+    renderPushBanner();
+    navigateFromNotification(target);
+  });
+}
+
+function formatNotifTime(isoStr) {
+  if (!isoStr) return '';
+  const d = new Date(isoStr);
+  if (Number.isNaN(d.getTime())) return '';
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  return `${mm}/${dd} ${hh}:${mi}`;
+}
+
+function getBellState() {
+  const isSubscribed = Boolean(
+    state.profile?.pushSubscribed ||
+    Object.keys(state.profile?.fcmTokens || {}).length > 0
+  );
+  if (!isSubscribed) {
+    return { status: 'unsubscribed', osPermission: typeof Notification !== 'undefined' ? Notification.permission : 'unsupported' };
+  }
+  const osPermission = typeof Notification !== 'undefined' ? Notification.permission : 'unsupported';
+  const appEnabled = state.profile?.pushEnabled !== false;
+  if (appEnabled && osPermission === 'granted') {
+    return { status: 'enabled', osPermission };
+  }
+  return { status: 'muted', osPermission };
 }
 
 function closeModal() {
@@ -176,11 +253,17 @@ function subscribeTrips() {
     list.sort((a, b) => String(b.startDate || '').localeCompare(String(a.startDate || '')));
     state.trips = list;
 
-    // 檢查 URL hash 自動定位旅行
-    const hashMatch = window.location.hash.match(/trip=([^&]+)/);
+    // 檢查 URL hash 自動定位旅行與分頁（或審核彈窗）
+    const hashStr = window.location.hash || '';
+    const hashMatch = hashStr.match(/trip=([^&]+)/);
+    const tabMatch = hashStr.match(/tab=([^&]+)/);
     if (!state.activeTripId && hashMatch && list.some((t) => t.id === hashMatch[1])) {
-      selectTrip(hashMatch[1]);
+      selectTrip(hashMatch[1], tabMatch ? tabMatch[1] : 'timeline');
       return;
+    }
+    if (hashStr.includes('action=deletionReview') && isAdmin() && !state.modal) {
+      window.location.hash = '';
+      state.modal = { type: 'deletionReview', data: {} };
     }
     if (state.activeTripId && !list.some((t) => t.id === state.activeTripId)) {
       state.activeTripId = null;
@@ -205,10 +288,11 @@ async function loadAllUsersIfAdmin() {
   }
 }
 
-function selectTrip(tripId) {
+function selectTrip(tripId, initialTab = 'timeline') {
   clearTripDetailListeners();
   state.activeTripId = tripId;
-  state.activeTab = 'timeline';
+  const allowedTabs = ['timeline', 'expenses', 'settlement', ...(isAdmin() ? ['admin'] : [])];
+  state.activeTab = allowedTabs.includes(initialTab) ? initialTab : 'timeline';
   state.animatePage = true;
   state.expandedMobileSlots.clear();
   state.expandedDesktopSlots.clear();
@@ -218,7 +302,7 @@ function selectTrip(tripId) {
     const dates = getTripDateRange(trip.startDate, trip.endDate);
     const today = getTodayInTimezone(trip.timezone);
     state.selectedDate = dates.includes(today) ? today : (dates[0] || trip.startDate);
-    window.location.hash = `trip=${tripId}`;
+    window.location.hash = state.activeTab === 'timeline' ? `trip=${tripId}` : `trip=${tripId}&tab=${state.activeTab}`;
   }
 
   unsubTripDetail.push(
@@ -279,9 +363,47 @@ async function openHelpModal(sectionNum = null) {
   }
 }
 
-/* ============================= 推播訂閱與加入主畫面 ============================= */
+/* ============================= 推播開關（三態鈴鐺）、前景監聽與通知中心導頁 ============================= */
+async function setupForegroundMessaging() {
+  if (unsubForegroundMsg) {
+    try { unsubForegroundMsg(); } catch {}
+    unsubForegroundMsg = null;
+  }
+  const messaging = await getMessagingInstance();
+  if (!messaging) return;
+  unsubForegroundMsg = onMessage(messaging, (payload) => {
+    const title = payload?.notification?.title || payload?.data?.title || 'TripDock 通知';
+    const body = payload?.notification?.body || payload?.data?.body || '';
+    const targetType = payload?.data?.targetType || '';
+    const tripId = payload?.data?.tripId || '';
+    showPushBanner({ title, body, targetType, tripId });
+  });
+}
+
 async function handleSubscribePush() {
+  const bell = getBellState();
   const env = detectEnvironment();
+
+  // 狀態：綠色（已訂閱且開啟）-> 點一下暫停手機推播（轉為紅斜線，通知中心仍正常收訊息）
+  if (bell.status === 'enabled') {
+    try {
+      await updateDoc(doc(db, 'users', state.user.uid), {
+        pushSubscribed: true,
+        pushEnabled: false,
+        updatedAt: serverTimestamp()
+      });
+      state.profile.pushSubscribed = true;
+      state.profile.pushEnabled = false;
+      showToast('已關閉手機推播，通知中心仍會接收訊息');
+      render();
+    } catch (err) {
+      console.error(err);
+      showToast('更新推播開關失敗', 'error');
+    }
+    return;
+  }
+
+  // 狀態：灰色（未訂閱）或紅斜線（已訂閱但未開啟）-> 嘗試開啟或引導至系統設定
   if (env.isInAppBrowser || (env.isIOS && !env.isStandalone) || env.permission === 'denied') {
     state.modal = { type: 'pwa', data: { tab: env.isAndroid ? 'android' : 'ios' } };
     render();
@@ -294,7 +416,7 @@ async function handleSubscribePush() {
   }
 
   try {
-    const perm = await Notification.requestPermission();
+    const perm = env.permission === 'granted' ? 'granted' : await Notification.requestPermission();
     if (perm !== 'granted') {
       state.modal = { type: 'pwa', data: { tab: env.isAndroid ? 'android' : 'ios' } };
       render();
@@ -302,7 +424,15 @@ async function handleSubscribePush() {
     }
 
     if (!cfg.vapidKey) {
+      await updateDoc(doc(db, 'users', state.user.uid), {
+        pushSubscribed: true,
+        pushEnabled: true,
+        updatedAt: serverTimestamp()
+      });
+      state.profile.pushSubscribed = true;
+      state.profile.pushEnabled = true;
       showToast('已取得通知權限，待填入 VAPID Key 即可接收推播', 'success');
+      render();
       return;
     }
 
@@ -325,16 +455,86 @@ async function handleSubscribePush() {
       nextTokens[key] = { token, platform, updatedAt: new Date().toISOString() };
       await updateDoc(doc(db, 'users', state.user.uid), {
         fcmTokens: nextTokens,
+        pushSubscribed: true,
+        pushEnabled: true,
         updatedAt: serverTimestamp()
       });
       state.profile.fcmTokens = nextTokens;
-      showToast('推播通知訂閱成功', 'success');
+      state.profile.pushSubscribed = true;
+      state.profile.pushEnabled = true;
+      await setupForegroundMessaging();
+      showToast(bell.status === 'muted' ? '已重新開啟手機推播通知' : '推播通知訂閱成功', 'success');
       render();
     }
   } catch (err) {
     console.error(err);
     showToast('推播訂閱失敗，請檢查 VAPID Key 或瀏覽器設定', 'error');
   }
+}
+
+async function navigateFromNotification(notif) {
+  if (!notif) return;
+  const { targetType, tripId } = notif;
+  if ((targetType === 'settlement' || targetType === 'trip') && tripId) {
+    if (state.trips.some((t) => t.id === tripId)) {
+      selectTrip(tripId, targetType === 'settlement' ? 'settlement' : 'timeline');
+    } else {
+      showToast('找不到對應的旅行資料', 'error');
+    }
+    return;
+  }
+  if (targetType === 'deletionReview' && isAdmin()) {
+    await loadAllUsersIfAdmin();
+    state.modal = { type: 'deletionReview', data: {} };
+    render();
+    return;
+  }
+  if (targetType === 'profile') {
+    state.modal = { type: 'profile', data: {} };
+    render();
+  }
+}
+
+async function handleClickNotification(notifId) {
+  const list = Array.isArray(state.profile?.notifications) ? state.profile.notifications : [];
+  const target = list.find((n) => n.id === notifId);
+  if (!target) return;
+
+  if (!target.read) {
+    const nextList = list.map((n) => (n.id === notifId ? { ...n, read: true } : n));
+    state.profile.notifications = nextList;
+    try {
+      await updateDoc(doc(db, 'users', state.user.uid), {
+        notifications: nextList,
+        updatedAt: serverTimestamp()
+      });
+    } catch {}
+  }
+  await navigateFromNotification(target);
+}
+
+async function handleMarkAllNotifsRead() {
+  const list = Array.isArray(state.profile?.notifications) ? state.profile.notifications : [];
+  if (!list.some((n) => !n.read)) return;
+  const nextList = list.map((n) => ({ ...n, read: true }));
+  state.profile.notifications = nextList;
+  await updateDoc(doc(db, 'users', state.user.uid), {
+    notifications: nextList,
+    updatedAt: serverTimestamp()
+  });
+  render();
+}
+
+async function handleClearReadNotifs() {
+  const list = Array.isArray(state.profile?.notifications) ? state.profile.notifications : [];
+  const nextList = list.filter((n) => !n.read);
+  state.profile.notifications = nextList;
+  await updateDoc(doc(db, 'users', state.user.uid), {
+    notifications: nextList,
+    updatedAt: serverTimestamp()
+  });
+  showToast('已清除已讀通知');
+  render();
 }
 
 /* ============================= 主渲染入口 ============================= */
@@ -500,7 +700,27 @@ function bindAuthEvents() {
 /* ============================= 頂部導覽列 ============================= */
 function renderHeader() {
   const trip = activeTrip();
-  const hasPush = Object.keys(state.profile?.fcmTokens || {}).length > 0;
+  const bell = getBellState();
+  const bellCls =
+    bell.status === 'enabled'
+      ? 'glass-btn-bell-on'
+      : bell.status === 'muted'
+      ? 'glass-btn-bell-muted'
+      : 'glass-btn-bell-off';
+  const bellIcon = bell.status === 'muted' ? 'bell-off' : 'bell';
+  const bellLabel =
+    bell.status === 'enabled'
+      ? '推播已開啟'
+      : bell.status === 'muted'
+      ? '推播已關閉'
+      : '開啟推播通知';
+  const bellTitle =
+    bell.status === 'enabled'
+      ? '推播已開啟，點擊暫停推播'
+      : bell.status === 'muted'
+      ? (bell.osPermission !== 'granted' ? '手機系統通知已關閉，點擊查看設定' : '推播已暫停，點擊重新開啟')
+      : '點擊訂閱推播通知';
+
   return `
     <header class="sticky top-0 z-30 glass-header">
       <div class="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between gap-2">
@@ -519,9 +739,9 @@ function renderHeader() {
         </div>
 
         <div class="flex items-center gap-1.5 shrink-0">
-          <button id="btn-subscribe-push" class="px-2.5 py-1.5 rounded-xl text-xs font-medium flex items-center gap-1 ${hasPush ? 'glass-btn-teal-soft' : 'glass-btn-subtle'}" title="開啟推播通知">
-            <i data-lucide="bell" class="w-3.5 h-3.5"></i>
-            <span class="hidden sm:inline">${hasPush ? '已訂閱推播' : '開啟推播通知'}</span>
+          <button id="btn-subscribe-push" class="px-2.5 py-1.5 rounded-xl text-xs font-medium flex items-center gap-1 ${bellCls}" title="${esc(bellTitle)}">
+            <i data-lucide="${bellIcon}" class="w-3.5 h-3.5"></i>
+            <span class="hidden sm:inline">${bellLabel}</span>
           </button>
           <button id="btn-open-pwa" class="p-1.5 rounded-xl glass-btn-subtle text-slate-600" title="加入主畫面教學">
             <i data-lucide="smartphone" class="w-4 h-4"></i>
@@ -590,8 +810,59 @@ function renderTripList() {
     ? state.allUsers.filter((u) => u.role !== 'admin' && u.deletionRequested === true)
     : [];
 
+  const notifs = (Array.isArray(state.profile?.notifications) ? state.profile.notifications : [])
+    .slice()
+    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+  const unreadCount = notifs.filter((n) => !n.read).length;
+  const readCount = notifs.length - unreadCount;
+  const visibleNotifs = state.notifExpanded ? notifs : notifs.slice(0, 3);
+
+  const notifCenterHtml = `
+    <section class="bg-white rounded-2xl border border-slate-200/90 p-4 space-y-2.5">
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <i data-lucide="inbox" class="w-4 h-4 text-teal-700"></i>
+          <h2 class="text-sm font-bold text-slate-900">通知中心</h2>
+          ${unreadCount > 0 ? `<span class="px-2 py-0.5 rounded-full bg-teal-600 text-white text-[11px] font-bold">${unreadCount}</span>` : ''}
+        </div>
+        <div class="flex items-center gap-2.5 text-xs">
+          ${unreadCount > 0 ? `<button id="btn-mark-all-read" class="text-teal-700 hover:text-teal-800 font-medium">全部已讀</button>` : ''}
+          ${readCount > 0 ? `<button id="btn-clear-read-notifs" class="text-slate-400 hover:text-slate-600 font-medium">清除已讀</button>` : ''}
+        </div>
+      </div>
+
+      ${notifs.length === 0 ? `
+        <p class="text-xs text-slate-400 py-1">目前沒有通知訊息</p>
+      ` : `
+        <div class="space-y-1.5">
+          ${visibleNotifs.map((n) => `
+            <div data-open-notif="${esc(n.id)}" class="cursor-pointer p-2.5 rounded-xl border transition flex items-start gap-2.5 ${
+              n.read ? 'bg-slate-50/60 border-slate-100 hover:bg-slate-100/70' : 'bg-teal-50/45 border-teal-200/80 hover:bg-teal-50'
+            }">
+              <span class="w-2 h-2 rounded-full mt-1.5 shrink-0 ${n.read ? 'bg-slate-300' : 'bg-teal-600'}"></span>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between gap-2">
+                  <p class="text-xs font-bold ${n.read ? 'text-slate-600' : 'text-slate-900'} truncate">${esc(n.title)}</p>
+                  <span class="text-[11px] text-slate-400 shrink-0">${esc(formatNotifTime(n.createdAt))}</span>
+                </div>
+                <p class="text-xs ${n.read ? 'text-slate-500' : 'text-slate-700'} mt-0.5 line-clamp-2">${esc(n.body)}</p>
+              </div>
+              <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-slate-400 shrink-0 mt-1"></i>
+            </div>
+          `).join('')}
+        </div>
+        ${notifs.length > 3 ? `
+          <button id="btn-toggle-notif-expand" class="w-full py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-600">
+            ${state.notifExpanded ? '收合通知' : `展開其餘 ${notifs.length - 3} 則通知`}
+          </button>
+        ` : ''}
+      `}
+    </section>
+  `;
+
   return `
-    <div class="space-y-6">
+    <div class="space-y-5">
+      ${notifCenterHtml}
       ${pendingDeletions.length > 0 ? `
         <div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center justify-between gap-3">
           <div class="flex items-center gap-2.5 min-w-0">
@@ -2111,6 +2382,17 @@ function bindGlobalEvents() {
     render();
   });
 
+  // 通知中心互動事件
+  document.querySelectorAll('[data-open-notif]').forEach((el) => {
+    el.addEventListener('click', () => handleClickNotification(el.dataset.openNotif));
+  });
+  document.getElementById('btn-mark-all-read')?.addEventListener('click', handleMarkAllNotifsRead);
+  document.getElementById('btn-clear-read-notifs')?.addEventListener('click', handleClearReadNotifs);
+  document.getElementById('btn-toggle-notif-expand')?.addEventListener('click', () => {
+    state.notifExpanded = !state.notifExpanded;
+    render();
+  });
+
   // 首頁刪除帳號審核提醒、建立與進入旅行
   document.getElementById('btn-open-deletion-review')?.addEventListener('click', async () => {
     await loadAllUsersIfAdmin();
@@ -2984,7 +3266,13 @@ async function handleRemindTransfer(transferId) {
       payerName: memberName(trip, tr.toUserId),
       amountTwd: tr.amountTwd
     });
-    showToast(res.ok ? '已發送繳款提醒推播' : '已記錄提醒時間（推播跳板未就緒）', 'success');
+    if (!res.ok) {
+      showToast('已記錄提醒時間，推播跳板暫未就緒', 'error');
+    } else if (res.sent > 0) {
+      showToast('已發送繳款提醒推播', 'success');
+    } else {
+      showToast('已送達對方通知中心，對方目前未開啟手機推播', 'success');
+    }
   } else {
     showToast('已記錄催繳提醒（設定 GAS 跳板後將同步推送通知）', 'success');
   }
@@ -3246,6 +3534,21 @@ async function handleReviewAccountDeletion(targetUid, decision) {
   }
 }
 
+/* ============================= 系統通知權限即時同步 ============================= */
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && state.user) render();
+});
+window.addEventListener('focus', () => {
+  if (state.user) render();
+});
+if (navigator.permissions && navigator.permissions.query) {
+  navigator.permissions.query({ name: 'notifications' }).then((status) => {
+    status.onchange = () => {
+      if (state.user) render();
+    };
+  }).catch(() => {});
+}
+
 /* ============================= 啟動認證監聽 ============================= */
 if (isConfigured) {
   onAuthStateChanged(auth, async (user) => {
@@ -3253,11 +3556,13 @@ if (isConfigured) {
     state.authReady = true;
     clearTripDetailListeners();
     state.activeTripId = null;
+    if (unsubProfile) { try { unsubProfile(); } catch {} unsubProfile = null; }
+    if (unsubForegroundMsg) { try { unsubForegroundMsg(); } catch {} unsubForegroundMsg = null; }
 
     if (!user) {
       state.profile = null;
       state.trips = [];
-      if (unsubTrips) { try { unsubTrips(); } catch {} }
+      if (unsubTrips) { try { unsubTrips(); } catch {} unsubTrips = null; }
       render();
       return;
     }
@@ -3271,11 +3576,23 @@ if (isConfigured) {
         email: user.email,
         displayName: user.email.split('@')[0],
         role: 'member',
-        fcmTokens: {}
+        fcmTokens: {},
+        pushSubscribed: false,
+        pushEnabled: true,
+        notifications: []
       };
       await setDoc(userRef, { ...state.profile, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
     }
 
+    // 即時監聽個人文件，讓通知中心與權限狀態即時同步
+    unsubProfile = onSnapshot(userRef, (docSnap) => {
+      if (docSnap.exists()) {
+        state.profile = docSnap.data();
+        render();
+      }
+    });
+
+    setupForegroundMessaging();
     subscribeTrips();
     if (isAdmin()) loadAllUsersIfAdmin();
     render();

@@ -33,6 +33,7 @@ import {
 import {
   getMessaging,
   getToken,
+  onMessage,
   isSupported as isMessagingSupported
 } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-messaging.js';
 
@@ -72,5 +73,5 @@ export {
   EmailAuthProvider, onAuthStateChanged,
   doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
   collection, query, where, orderBy, limit, onSnapshot, writeBatch, serverTimestamp,
-  getToken
+  getToken, onMessage
 };

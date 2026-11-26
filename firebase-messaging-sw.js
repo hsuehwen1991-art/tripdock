@@ -3,7 +3,7 @@ importScripts('./js/config.js');
 importScripts('https://www.gstatic.com/firebasejs/11.6.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/11.6.0/firebase-messaging-compat.js');
 
-const CACHE_NAME = 'tripdock-shell-v3-10';
+const CACHE_NAME = 'tripdock-shell-v3-11';
 const SHELL_ASSETS = [
   './',
   './index.html',

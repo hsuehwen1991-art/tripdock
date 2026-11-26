@@ -242,16 +242,25 @@ function clearTripDetailListeners() {
   state.checkIns = {};
 }
 
-function subscribeTrips() {
+function subscribeTrips(onFirstSnap = null) {
   if (unsubTrips) { try { unsubTrips(); } catch {} }
   const q = isAdmin()
     ? query(collection(db, 'trips'), orderBy('startDate', 'desc'))
     : query(collection(db, 'trips'), where('activeMemberIds', 'array-contains', state.user.uid));
 
+  let resolvedFirst = false;
+  const finishFirst = () => {
+    if (!resolvedFirst) {
+      resolvedFirst = true;
+      if (typeof onFirstSnap === 'function') onFirstSnap();
+    }
+  };
+
   unsubTrips = onSnapshot(q, (snap) => {
     const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     list.sort((a, b) => String(b.startDate || '').localeCompare(String(a.startDate || '')));
     state.trips = list;
+    finishFirst();
 
     // 檢查 URL hash 自動定位旅行與分頁（或審核彈窗）
     const hashStr = window.location.hash || '';
@@ -272,6 +281,7 @@ function subscribeTrips() {
     render();
   }, (err) => {
     console.error(err);
+    finishFirst();
     showToast('讀取旅行資料失敗，請檢查 Firestore 規則', 'error');
   });
 }
@@ -3556,8 +3566,12 @@ if (navigator.permissions && navigator.permissions.query) {
   }).catch(() => {});
 }
 
-/* ============================= 啟動認證監聽 ============================= */
+/* ============================= 啟動認證監聽與背景預同步 ============================= */
+// 背景預載內建說明書，開啟 [i] 時零延遲
+const guidePreloadPromise = loadUserGuide().catch(() => '');
+
 if (isConfigured) {
+  window.__TD_SPLASH?.setStatus('驗證登入狀態...');
   onAuthStateChanged(auth, async (user) => {
     state.user = user;
     state.authReady = true;
@@ -3571,9 +3585,12 @@ if (isConfigured) {
       state.trips = [];
       if (unsubTrips) { try { unsubTrips(); } catch {} unsubTrips = null; }
       render();
+      await guidePreloadPromise;
+      window.__TD_SPLASH?.markReady();
       return;
     }
 
+    window.__TD_SPLASH?.setStatus('同步個人與通知資料...');
     const userRef = doc(db, 'users', user.uid);
     const snap = await getDoc(userRef);
     if (snap.exists()) {
@@ -3599,11 +3616,22 @@ if (isConfigured) {
       }
     });
 
-    setupForegroundMessaging();
-    subscribeTrips();
-    if (isAdmin()) loadAllUsersIfAdmin();
+    window.__TD_SPLASH?.setStatus('同步旅行清單與行程...');
+    const tripsFirstLoad = new Promise((resolve) => subscribeTrips(resolve));
+    const bgTasks = [
+      tripsFirstLoad,
+      guidePreloadPromise,
+      setupForegroundMessaging().catch(() => {})
+    ];
+    if (isAdmin()) {
+      bgTasks.push(loadAllUsersIfAdmin().catch(() => {}));
+    }
     render();
+
+    await Promise.all(bgTasks);
+    window.__TD_SPLASH?.markReady();
   });
 } else {
   render();
+  window.__TD_SPLASH?.markReady();
 }

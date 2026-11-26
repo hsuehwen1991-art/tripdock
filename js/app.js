@@ -546,7 +546,14 @@ function render() {
     return;
   }
   if (!state.authReady) {
-    root.innerHTML = `<div class="min-h-screen flex items-center justify-center text-sm text-slate-500">驗證登入狀態中...</div>`;
+    root.innerHTML = `
+      <div class="min-h-screen flex items-center justify-center">
+        <div class="text-center space-y-2">
+          <img src="./icons/loading-cat.webp" width="112" height="112" alt="驗證登入狀態中" class="w-28 h-28 mx-auto object-contain select-none" style="image-rendering: pixelated;" />
+          <p class="text-sm text-slate-500">驗證登入狀態中...</p>
+        </div>
+      </div>
+    `;
     return;
   }
   if (!state.user) {

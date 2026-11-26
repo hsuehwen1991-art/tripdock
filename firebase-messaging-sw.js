@@ -3,7 +3,7 @@ importScripts('./js/config.js');
 importScripts('https://www.gstatic.com/firebasejs/11.6.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/11.6.0/firebase-messaging-compat.js');
 
-const CACHE_NAME = 'tripdock-shell-v3-9';
+const CACHE_NAME = 'tripdock-shell-v3-10';
 const SHELL_ASSETS = [
   './',
   './index.html',
@@ -14,7 +14,8 @@ const SHELL_ASSETS = [
   './js/app.js',
   './docs/USER_GUIDE.md',
   './icons/icon-192.png',
-  './icons/icon-512.png'
+  './icons/icon-512.png',
+  './icons/loading-cat.webp'
 ];
 
 self.addEventListener('install', (event) => {

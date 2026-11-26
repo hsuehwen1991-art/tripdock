@@ -252,6 +252,33 @@
       box-shadow: 0 0 10px rgba(20, 184, 166, 0.45);
       transition: width 0.12s linear;
     }
+
+    /* ===== 右下角像素貓咪通知客服 ===== */
+    .td-cat-sprite {
+      background-image: url('./icons/cat-concierge.webp');
+      background-size: 400% 100%;
+      background-repeat: no-repeat;
+      background-position: 0% 0%;
+      image-rendering: pixelated;
+      filter: drop-shadow(0 6px 10px rgba(15, 23, 42, 0.14));
+      will-change: transform, background-position;
+    }
+    @keyframes tdCatHop {
+      0% { transform: scale(1) translateY(0); }
+      38% { transform: scale(1.09, 0.94) translateY(-9px); }
+      72% { transform: scale(0.96, 1.04) translateY(0); }
+      100% { transform: scale(1) translateY(0); }
+    }
+    .td-cat-hop {
+      animation: tdCatHop 0.30s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+    @keyframes tdBubbleFloat {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-3px); }
+    }
+    .td-cat-bubble {
+      animation: tdBubbleFloat 2.4s ease-in-out infinite;
+    }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased min-h-screen">
@@ -332,6 +359,6 @@
       requestAnimationFrame(tick);
     })();
   </script>
-  <script type="module" src="./js/app.js?v=3.14"></script>
+  <script type="module" src="./js/app.js?v=3.15"></script>
 </body>
 </html>

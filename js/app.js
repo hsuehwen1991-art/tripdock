@@ -46,6 +46,9 @@ let unsubProfile = null;
 let unsubTrips = null;
 let unsubTripDetail = [];
 let unsubForegroundMsg = null;
+let catAnimTimer = null;
+let catCurrentFrame = 0;
+let catClickLock = false;
 
 /* ============================= 工具函式 ============================= */
 const esc = (s) =>
@@ -533,6 +536,8 @@ async function navigateFromNotification(notif) {
   }
   if ((targetType === 'settlement' || targetType === 'trip') && tripId) {
     if (state.trips.some((t) => t.id === tripId)) {
+      state.modal = null;
+      state.lastModalType = null;
       selectTrip(tripId, targetType === 'settlement' ? 'settlement' : 'timeline');
     } else {
       showToast('找不到對應的旅行資料', 'error');
@@ -623,10 +628,11 @@ function render() {
   root.innerHTML = `
     <div class="min-h-screen flex flex-col">
       ${renderHeader()}
-      <main class="flex-1 max-w-5xl w-full mx-auto px-4 py-5 pb-20 ${pageAnimCls}">
+      <main class="flex-1 max-w-5xl w-full mx-auto px-4 py-5 ${state.activeTripId ? 'pb-20' : 'pb-28'} ${pageAnimCls}">
         ${state.activeTripId ? renderTripDetail() : renderTripList()}
       </main>
     </div>
+    ${!state.activeTripId ? renderCatConcierge() : ''}
     ${renderModal()}
   `;
 
@@ -635,6 +641,7 @@ function render() {
   state.lastModalType = state.modal ? state.modal.type : null;
 
   bindGlobalEvents();
+  syncCatConciergeAnimator();
   lucide.createIcons();
 }
 
@@ -873,78 +880,8 @@ function renderTripList() {
     ? state.allUsers.filter((u) => u.role !== 'admin' && u.deletionRequested === true)
     : [];
 
-  const notifs = (Array.isArray(state.profile?.notifications) ? state.profile.notifications : [])
-    .slice()
-    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
-  const unreadCount = notifs.filter((n) => !n.read).length;
-  const readCount = notifs.length - unreadCount;
-  const visibleNotifs = state.notifExpanded ? notifs : notifs.slice(0, 3);
-
-  const notifCenterHtml = `
-    <section class="bg-white rounded-2xl border border-slate-200/90 p-4 space-y-2.5">
-      <div class="flex items-center justify-between gap-2">
-        <div class="flex items-center gap-2">
-          <i data-lucide="inbox" class="w-4 h-4 text-teal-700"></i>
-          <h2 class="text-sm font-bold text-slate-900">通知中心</h2>
-          ${unreadCount > 0 ? `<span class="px-2 py-0.5 rounded-full bg-teal-600 text-white text-[11px] font-bold">${unreadCount}</span>` : ''}
-        </div>
-        <div class="flex items-center gap-2.5 text-xs">
-          ${unreadCount > 0 ? `<button id="btn-mark-all-read" class="text-teal-700 hover:text-teal-800 font-medium">全部已讀</button>` : ''}
-          ${readCount > 0 ? `<button id="btn-clear-read-notifs" class="text-slate-400 hover:text-slate-600 font-medium">清除已讀</button>` : ''}
-        </div>
-      </div>
-
-      ${notifs.length === 0 ? `
-        <p class="text-xs text-slate-400 py-1">目前沒有通知訊息</p>
-      ` : `
-        <div class="space-y-1.5">
-          ${visibleNotifs.map((n) => {
-            const isPendingInvite = n.targetType === 'tripInvitation' && n.inviteStatus === 'pending';
-            const inviteTag =
-              n.targetType === 'tripInvitation' && n.inviteStatus === 'accepted'
-                ? `<span class="inline-block mt-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-700">已確認參加</span>`
-                : n.targetType === 'tripInvitation' && n.inviteStatus === 'declined'
-                ? `<span class="inline-block mt-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-200 text-slate-600">已婉拒</span>`
-                : '';
-
-            return `
-              <div data-open-notif="${esc(n.id)}" class="cursor-pointer p-2.5 rounded-xl border transition space-y-2 ${
-                n.read ? 'bg-slate-50/60 border-slate-100 hover:bg-slate-100/70' : 'bg-teal-50/45 border-teal-200/80 hover:bg-teal-50'
-              }">
-                <div class="flex items-start gap-2.5">
-                  <span class="w-2 h-2 rounded-full mt-1.5 shrink-0 ${n.read ? 'bg-slate-300' : 'bg-teal-600'}"></span>
-                  <div class="flex-1 min-w-0">
-                    <div class="flex items-center justify-between gap-2">
-                      <p class="text-xs font-bold ${n.read ? 'text-slate-600' : 'text-slate-900'} truncate">${esc(n.title)}</p>
-                      <span class="text-[11px] text-slate-400 shrink-0">${esc(formatNotifTime(n.createdAt))}</span>
-                    </div>
-                    <p class="text-xs ${n.read ? 'text-slate-500' : 'text-slate-700'} mt-0.5 line-clamp-2">${esc(n.body)}</p>
-                    ${inviteTag}
-                  </div>
-                  <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-slate-400 shrink-0 mt-1"></i>
-                </div>
-                ${isPendingInvite ? `
-                  <div class="flex items-center justify-end gap-2 pl-4">
-                    <button type="button" data-invite-reply="decline" data-invite-trip="${esc(n.tripId)}" data-invite-notif="${esc(n.id)}" class="px-3 py-1.5 rounded-xl glass-btn-subtle text-xs font-semibold">婉拒</button>
-                    <button type="button" data-invite-reply="accept" data-invite-trip="${esc(n.tripId)}" data-invite-notif="${esc(n.id)}" class="px-3.5 py-1.5 rounded-xl glass-btn-primary text-xs font-semibold">確認參加</button>
-                  </div>
-                ` : ''}
-              </div>
-            `;
-          }).join('')}
-        </div>
-        ${notifs.length > 3 ? `
-          <button id="btn-toggle-notif-expand" class="w-full py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-600">
-            ${state.notifExpanded ? '收合通知' : `展開其餘 ${notifs.length - 3} 則通知`}
-          </button>
-        ` : ''}
-      `}
-    </section>
-  `;
-
   return `
     <div class="space-y-5">
-      ${notifCenterHtml}
       ${pendingDeletions.length > 0 ? `
         <div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center justify-between gap-3">
           <div class="flex items-center gap-2.5 min-w-0">
@@ -1614,6 +1551,137 @@ function renderAdminTab(trip) {
   `;
 }
 
+/* ============================= 主頁右下角貓咪通知客服 ============================= */
+function getSortedNotifications() {
+  return (Array.isArray(state.profile?.notifications) ? state.profile.notifications : [])
+    .slice()
+    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+}
+
+function renderCatConcierge() {
+  const notifs = getSortedNotifications();
+  const unreadCount = notifs.filter((n) => !n.read).length;
+  const framePos = ['0% 0%', '33.3333% 0%', '66.6667% 0%', '100% 0%'][catCurrentFrame] || '0% 0%';
+
+  return `
+    <div id="td-cat-concierge" class="fixed bottom-3 right-3 sm:bottom-5 sm:right-6 z-40 flex flex-col items-end pointer-events-none select-none">
+      ${unreadCount > 0 ? `
+        <button type="button" data-open-cat-notifs class="td-cat-bubble pointer-events-auto relative mb-1.5 mr-1 px-3 py-1.5 rounded-2xl bg-white/95 backdrop-blur-md border border-teal-200 shadow-lg text-xs font-bold text-slate-800 whitespace-nowrap active:scale-95 transition">
+          <span>你有 <span class="text-teal-700">${unreadCount}</span> 則未讀通知</span>
+          <span class="absolute -bottom-1.5 right-6 w-3 h-3 bg-white border-r border-b border-teal-200 rotate-45"></span>
+        </button>
+      ` : ''}
+      <button type="button" data-open-cat-notifs aria-label="開啟通知中心" title="${unreadCount > 0 ? `你有 ${unreadCount} 則未讀通知` : '開啟通知中心'}" class="pointer-events-auto relative p-0 bg-transparent border-0 cursor-pointer focus:outline-none">
+        <div id="td-cat-sprite" class="td-cat-sprite w-20 h-20 sm:w-24 sm:h-24" style="background-position: ${framePos};"></div>
+      </button>
+    </div>
+  `;
+}
+
+function setCatSpriteFrame(frameIdx) {
+  catCurrentFrame = frameIdx;
+  const el = document.getElementById('td-cat-sprite');
+  if (!el) return;
+  const positions = ['0% 0%', '33.3333% 0%', '66.6667% 0%', '100% 0%'];
+  el.style.backgroundPosition = positions[frameIdx] || '0% 0%';
+}
+
+function syncCatConciergeAnimator() {
+  clearTimeout(catAnimTimer);
+  catAnimTimer = null;
+
+  const spriteEl = document.getElementById('td-cat-sprite');
+  if (!spriteEl || state.activeTripId || !state.user) return;
+  if (catClickLock) return;
+
+  const unreadCount = getSortedNotifications().filter((n) => !n.read).length;
+
+  const playSequence = (steps, onDone) => {
+    let idx = 0;
+    const runNext = () => {
+      if (catClickLock || !document.getElementById('td-cat-sprite')) return;
+      if (idx >= steps.length) {
+        if (onDone) onDone();
+        return;
+      }
+      const [frame, ms] = steps[idx++];
+      setCatSpriteFrame(frame);
+      catAnimTimer = setTimeout(runNext, ms);
+    };
+    runNext();
+  };
+
+  const scheduleNext = () => {
+    if (catClickLock || !document.getElementById('td-cat-sprite')) return;
+    const nowUnread = getSortedNotifications().filter((n) => !n.read).length;
+
+    if (nowUnread > 0) {
+      // 有未讀通知：較活潑地隨機招手＋搖尾巴提醒
+      const r = Math.random();
+      let seq;
+      if (r < 0.45) {
+        seq = [[3, 520], [0, 380], [2, 300], [0, 460]];
+      } else if (r < 0.8) {
+        seq = [[2, 260], [0, 220], [2, 260], [3, 560], [0, 480]];
+      } else {
+        seq = [[3, 640], [1, 220], [0, 440]];
+      }
+      playSequence(seq, scheduleNext);
+    } else {
+      // 平常無未讀：悠閒坐姿發呆 2.0～4.6 秒，隨機穿插搖尾巴或眨眼
+      setCatSpriteFrame(0);
+      const waitMs = 2000 + Math.floor(Math.random() * 2600);
+      catAnimTimer = setTimeout(() => {
+        const r = Math.random();
+        let seq;
+        if (r < 0.42) {
+          // 輕搖一下尾巴
+          seq = [[2, 340], [0, 260]];
+        } else if (r < 0.72) {
+          // 悠哉連搖兩下尾巴
+          seq = [[2, 300], [0, 220], [2, 320], [0, 260]];
+        } else if (r < 0.90) {
+          // 輕鬆眨個眼
+          seq = [[1, 280], [0, 240]];
+        } else {
+          // 搖尾巴配眨眼
+          seq = [[2, 280], [1, 280], [0, 260]];
+        }
+        playSequence(seq, scheduleNext);
+      }, waitMs);
+    }
+  };
+
+  if (unreadCount > 0) {
+    setCatSpriteFrame(3);
+    catAnimTimer = setTimeout(scheduleNext, 420);
+  } else {
+    scheduleNext();
+  }
+}
+
+function handleOpenCatNotificationCenter() {
+  if (catClickLock) return;
+  catClickLock = true;
+  clearTimeout(catAnimTimer);
+  catAnimTimer = null;
+
+  // 點擊瞬間切換為「舉手＋冒愛心」並小彈跳一下，再 3D 翻轉打開通知中心
+  setCatSpriteFrame(3);
+  const spriteEl = document.getElementById('td-cat-sprite');
+  if (spriteEl) {
+    spriteEl.classList.remove('td-cat-hop');
+    void spriteEl.offsetWidth;
+    spriteEl.classList.add('td-cat-hop');
+  }
+
+  setTimeout(() => {
+    catClickLock = false;
+    state.modal = { type: 'notificationCenter', data: {} };
+    render();
+  }, 240);
+}
+
 /* ============================= 彈窗系統 ============================= */
 function renderModal() {
   if (!state.modal) return '';
@@ -1633,6 +1701,7 @@ function renderModal() {
   else if (type === 'deletionReview' || type === 'accountManagement') body = renderAccountManagementModalContent();
   else if (type === 'adminDeleteAccount') body = renderAdminDeleteAccountModalContent(data);
   else if (type === 'tripInvitation') body = renderTripInvitationModalContent(data);
+  else if (type === 'notificationCenter') body = renderNotificationCenterModalContent();
 
   const isFreshOpen = !state.lastModalType;
   const isSwitchFlip = Boolean(state.lastModalType && state.lastModalType !== type);
@@ -1949,6 +2018,73 @@ function renderTripInvitationModalContent(data) {
       ` : `
         <div class="p-3 rounded-xl bg-slate-100 text-xs text-slate-600 text-center font-medium">
           ${notif.inviteStatus === 'accepted' ? '你已確認參加此趟旅行' : '你已婉拒此趟旅行邀請'}
+        </div>
+      `}
+    </div>
+  `;
+}
+
+/* ----------------------------- Modal: 通知中心（由右下角貓咪客服開啟） ----------------------------- */
+function renderNotificationCenterModalContent() {
+  const notifs = getSortedNotifications();
+  const unreadCount = notifs.filter((n) => !n.read).length;
+  const readCount = notifs.length - unreadCount;
+
+  return `
+    ${modalHeader(unreadCount > 0 ? `通知中心｜${unreadCount} 則未讀` : '通知中心')}
+    <div class="p-5 overflow-y-auto td-modal-scroll space-y-3.5">
+      ${notifs.length > 0 ? `
+        <div class="flex items-center justify-between gap-2 pb-1 border-b border-slate-100 text-xs">
+          <span class="text-slate-500">共 ${notifs.length} 則通知</span>
+          <div class="flex items-center gap-3">
+            ${unreadCount > 0 ? `<button type="button" id="btn-mark-all-read" class="text-teal-700 hover:text-teal-800 font-semibold">全部已讀</button>` : ''}
+            ${readCount > 0 ? `<button type="button" id="btn-clear-read-notifs" class="text-slate-400 hover:text-slate-600 font-medium">清除已讀</button>` : ''}
+          </div>
+        </div>
+      ` : ''}
+
+      ${notifs.length === 0 ? `
+        <div class="py-8 text-center space-y-2">
+          <img src="./icons/cat-concierge.webp" alt="" class="hidden" />
+          <p class="text-sm font-semibold text-slate-700">目前沒有任何通知訊息</p>
+          <p class="text-xs text-slate-400">有新的旅行邀請、繳款提醒或行前通知時，角落的貓咪會第一時間提醒你！</p>
+        </div>
+      ` : `
+        <div class="space-y-2">
+          ${notifs.map((n) => {
+            const isPendingInvite = n.targetType === 'tripInvitation' && n.inviteStatus === 'pending';
+            const inviteTag =
+              n.targetType === 'tripInvitation' && n.inviteStatus === 'accepted'
+                ? `<span class="inline-block mt-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-700">已確認參加</span>`
+                : n.targetType === 'tripInvitation' && n.inviteStatus === 'declined'
+                ? `<span class="inline-block mt-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-200 text-slate-600">已婉拒</span>`
+                : '';
+
+            return `
+              <div data-open-notif="${esc(n.id)}" class="cursor-pointer p-3 rounded-2xl border transition space-y-2 ${
+                n.read ? 'bg-slate-50/60 border-slate-100 hover:bg-slate-100/70' : 'bg-teal-50/45 border-teal-200/80 hover:bg-teal-50'
+              }">
+                <div class="flex items-start gap-2.5">
+                  <span class="w-2 h-2 rounded-full mt-1.5 shrink-0 ${n.read ? 'bg-slate-300' : 'bg-teal-600'}"></span>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center justify-between gap-2">
+                      <p class="text-xs font-bold ${n.read ? 'text-slate-600' : 'text-slate-900'} truncate">${esc(n.title)}</p>
+                      <span class="text-[11px] text-slate-400 shrink-0">${esc(formatNotifTime(n.createdAt))}</span>
+                    </div>
+                    <p class="text-xs ${n.read ? 'text-slate-500' : 'text-slate-700'} mt-0.5 leading-relaxed">${esc(n.body)}</p>
+                    ${inviteTag}
+                  </div>
+                  <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-slate-400 shrink-0 mt-1"></i>
+                </div>
+                ${isPendingInvite ? `
+                  <div class="flex items-center justify-end gap-2 pl-4">
+                    <button type="button" data-invite-reply="decline" data-invite-trip="${esc(n.tripId)}" data-invite-notif="${esc(n.id)}" class="px-3 py-1.5 rounded-xl glass-btn-subtle text-xs font-semibold">婉拒</button>
+                    <button type="button" data-invite-reply="accept" data-invite-trip="${esc(n.tripId)}" data-invite-notif="${esc(n.id)}" class="px-3.5 py-1.5 rounded-xl glass-btn-primary text-xs font-semibold">確認參加</button>
+                  </div>
+                ` : ''}
+              </div>
+            `;
+          }).join('')}
         </div>
       `}
     </div>
@@ -2674,21 +2810,9 @@ function bindGlobalEvents() {
     render();
   });
 
-  // 通知中心互動事件
-  document.querySelectorAll('[data-invite-reply]').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      handleRespondTripInvitation(btn.dataset.inviteTrip, btn.dataset.inviteReply, btn.dataset.inviteNotif);
-    });
-  });
-  document.querySelectorAll('[data-open-notif]').forEach((el) => {
-    el.addEventListener('click', () => handleClickNotification(el.dataset.openNotif));
-  });
-  document.getElementById('btn-mark-all-read')?.addEventListener('click', handleMarkAllNotifsRead);
-  document.getElementById('btn-clear-read-notifs')?.addEventListener('click', handleClearReadNotifs);
-  document.getElementById('btn-toggle-notif-expand')?.addEventListener('click', () => {
-    state.notifExpanded = !state.notifExpanded;
-    render();
+  // 右下角貓咪客服點擊開啟通知中心
+  document.querySelectorAll('[data-open-cat-notifs]').forEach((el) => {
+    el.addEventListener('click', handleOpenCatNotificationCenter);
   });
 
   // 首頁帳號管理、刪除帳號審核提醒、建立與進入旅行
@@ -3036,6 +3160,20 @@ function bindModalEvents() {
         handleRespondTripInvitation(notif.tripId, btn.dataset.modalInviteReply, notif.id);
       });
     });
+  }
+
+  if (type === 'notificationCenter') {
+    document.querySelectorAll('[data-invite-reply]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        handleRespondTripInvitation(btn.dataset.inviteTrip, btn.dataset.inviteReply, btn.dataset.inviteNotif);
+      });
+    });
+    document.querySelectorAll('[data-open-notif]').forEach((el) => {
+      el.addEventListener('click', () => handleClickNotification(el.dataset.openNotif));
+    });
+    document.getElementById('btn-mark-all-read')?.addEventListener('click', handleMarkAllNotifsRead);
+    document.getElementById('btn-clear-read-notifs')?.addEventListener('click', handleClearReadNotifs);
   }
 
   if (type === 'createTrip') {

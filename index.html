@@ -42,6 +42,130 @@
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", sans-serif; }
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+    /* ===== 輕量版 Liquid Glass 材質（僅套用於導覽列、分頁列與重點按鈕） ===== */
+    .glass-header {
+      background: rgba(255, 255, 255, 0.74);
+      backdrop-filter: blur(18px) saturate(180%);
+      -webkit-backdrop-filter: blur(18px) saturate(180%);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.7);
+      box-shadow: 0 1px 12px rgba(15, 23, 42, 0.05);
+    }
+    .glass-bar {
+      background: rgba(255, 255, 255, 0.72);
+      backdrop-filter: blur(14px) saturate(160%);
+      -webkit-backdrop-filter: blur(14px) saturate(160%);
+      border: 1px solid rgba(255, 255, 255, 0.85);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 4px 16px rgba(15, 23, 42, 0.06);
+    }
+    .glass-btn-primary {
+      background: linear-gradient(135deg, rgba(20, 184, 166, 0.88), rgba(15, 118, 110, 0.95));
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.34);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 4px 14px rgba(13, 148, 136, 0.24);
+      transition: transform 0.16s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.16s ease, filter 0.16s ease;
+    }
+    .glass-btn-primary:hover {
+      filter: brightness(1.04);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 6px 18px rgba(13, 148, 136, 0.30);
+    }
+    .glass-btn-primary:active {
+      transform: scale(0.965);
+    }
+    .glass-btn-teal-soft {
+      background: linear-gradient(135deg, rgba(240, 253, 250, 0.92), rgba(204, 251, 241, 0.75));
+      color: #0f766e;
+      border: 1px solid rgba(94, 234, 212, 0.55);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 2px 8px rgba(13, 148, 136, 0.08);
+      transition: transform 0.16s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.16s ease;
+    }
+    .glass-btn-teal-soft:active {
+      transform: scale(0.965);
+    }
+    .glass-btn-subtle {
+      background: rgba(255, 255, 255, 0.75);
+      color: #334155;
+      border: 1px solid rgba(226, 232, 240, 0.9);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 2px 8px rgba(15, 23, 42, 0.04);
+      transition: transform 0.16s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.16s ease;
+    }
+    .glass-btn-subtle:hover {
+      background: rgba(248, 250, 252, 0.95);
+    }
+    .glass-btn-subtle:active {
+      transform: scale(0.965);
+    }
+    .glass-btn-danger {
+      background: linear-gradient(135deg, rgba(244, 63, 94, 0.90), rgba(225, 29, 72, 0.96));
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38), 0 4px 12px rgba(225, 29, 72, 0.22);
+      transition: transform 0.16s cubic-bezier(0.22, 1, 0.36, 1), filter 0.16s ease;
+    }
+    .glass-btn-danger:active {
+      transform: scale(0.965);
+    }
+
+    /* ===== GPU 加速頁面與分頁切換動畫 ===== */
+    @keyframes tdViewIn {
+      from { opacity: 0; transform: translateY(7px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .td-view-enter {
+      animation: tdViewIn 0.19s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+
+    /* ===== GPU 加速彈跳視窗動畫（手機 Bottom Sheet / 桌機微縮放淡入） ===== */
+    @keyframes tdBackdropIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes tdBackdropOut {
+      from { opacity: 1; }
+      to { opacity: 0; }
+    }
+    @keyframes tdSheetUp {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
+    @keyframes tdSheetDown {
+      from { transform: translateY(0); }
+      to { transform: translateY(100%); }
+    }
+    @keyframes tdModalPop {
+      from { opacity: 0; transform: scale(0.95) translateY(10px); }
+      to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    @keyframes tdModalPopOut {
+      from { opacity: 1; transform: scale(1) translateY(0); }
+      to { opacity: 0; transform: scale(0.96) translateY(8px); }
+    }
+    .td-modal-backdrop-enter {
+      animation: tdBackdropIn 0.18s ease-out both;
+    }
+    .td-modal-backdrop-exit {
+      animation: tdBackdropOut 0.16s ease-in both;
+    }
+    .td-modal-panel-enter {
+      animation: tdSheetUp 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+    .td-modal-panel-exit {
+      animation: tdSheetDown 0.17s cubic-bezier(0.4, 0, 1, 1) both;
+    }
+    @media (min-width: 640px) {
+      .td-modal-panel-enter {
+        animation: tdModalPop 0.20s cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
+      .td-modal-panel-exit {
+        animation: tdModalPopOut 0.15s ease-in both;
+      }
+    }
+
+    /* ===== 手機版旅行卡片左滑刪除 ===== */
+    .trip-swipe-card {
+      touch-action: pan-y;
+      will-change: transform;
+    }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased min-h-screen">

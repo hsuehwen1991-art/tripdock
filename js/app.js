@@ -34,7 +34,10 @@ const state = {
   deferredInstallPrompt: null,
   userGuideMd: '',
   toast: null,
-  modal: null // { type, data }
+  modal: null, // { type, data }
+  animatePage: false,
+  animateTab: false,
+  lastModalType: null
 };
 
 let unsubTrips = null;
@@ -73,6 +76,28 @@ function renderToast() {
   const bg = state.toast.tone === 'error' ? 'bg-rose-600' : state.toast.tone === 'success' ? 'bg-teal-700' : 'bg-slate-900';
   el.className = `fixed bottom-5 left-1/2 -translate-x-1/2 z-[100] px-4 py-2.5 rounded-full text-sm text-white shadow-lg ${bg}`;
   el.textContent = state.toast.message;
+}
+
+function closeModal() {
+  if (!state.modal) return;
+  const backdrop = document.getElementById('modal-backdrop');
+  const panel = document.getElementById('modal-panel');
+  if (backdrop && panel) {
+    backdrop.classList.remove('td-modal-backdrop-enter');
+    backdrop.classList.add('td-modal-backdrop-exit');
+    panel.classList.remove('td-modal-panel-enter');
+    panel.classList.add('td-modal-panel-exit');
+    clearTimeout(closeModal._timer);
+    closeModal._timer = setTimeout(() => {
+      state.modal = null;
+      state.lastModalType = null;
+      render();
+    }, 165);
+    return;
+  }
+  state.modal = null;
+  state.lastModalType = null;
+  render();
 }
 
 function isAdmin() {
@@ -184,6 +209,7 @@ function selectTrip(tripId) {
   clearTripDetailListeners();
   state.activeTripId = tripId;
   state.activeTab = 'timeline';
+  state.animatePage = true;
   state.expandedMobileSlots.clear();
   state.expandedDesktopSlots.clear();
 
@@ -330,15 +356,20 @@ function render() {
     return;
   }
 
+  const pageAnimCls = state.animatePage ? 'td-view-enter' : '';
   root.innerHTML = `
     <div class="min-h-screen flex flex-col">
       ${renderHeader()}
-      <main class="flex-1 max-w-5xl w-full mx-auto px-4 py-5 pb-20">
+      <main class="flex-1 max-w-5xl w-full mx-auto px-4 py-5 pb-20 ${pageAnimCls}">
         ${state.activeTripId ? renderTripDetail() : renderTripList()}
       </main>
     </div>
     ${renderModal()}
   `;
+
+  state.animatePage = false;
+  state.animateTab = false;
+  state.lastModalType = state.modal ? state.modal.type : null;
 
   bindGlobalEvents();
   lucide.createIcons();
@@ -471,12 +502,12 @@ function renderHeader() {
   const trip = activeTrip();
   const hasPush = Object.keys(state.profile?.fcmTokens || {}).length > 0;
   return `
-    <header class="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-slate-200">
+    <header class="sticky top-0 z-30 glass-header">
       <div class="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between gap-2">
         <div class="flex items-center gap-2.5 min-w-0">
           ${trip ? `
-            <button id="btn-back-trips" class="p-1.5 -ml-1.5 rounded-lg hover:bg-slate-100 text-slate-600" title="返回旅行清單">
-              <i data-lucide="arrow-left" class="w-5 h-5"></i>
+            <button id="btn-back-trips" class="p-1.5 -ml-1.5 rounded-xl glass-btn-subtle text-slate-600" title="返回旅行清單">
+              <i data-lucide="arrow-left" class="w-4 h-4"></i>
             </button>
           ` : `<img src="./icons/icon-192.png" class="w-8 h-8 rounded-lg shrink-0" alt="TripDock" />`}
           <div class="min-w-0">
@@ -488,17 +519,17 @@ function renderHeader() {
         </div>
 
         <div class="flex items-center gap-1.5 shrink-0">
-          <button id="btn-subscribe-push" class="px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1 ${hasPush ? 'bg-teal-50 text-teal-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}" title="開啟推播通知">
+          <button id="btn-subscribe-push" class="px-2.5 py-1.5 rounded-xl text-xs font-medium flex items-center gap-1 ${hasPush ? 'glass-btn-teal-soft' : 'glass-btn-subtle'}" title="開啟推播通知">
             <i data-lucide="bell" class="w-3.5 h-3.5"></i>
             <span class="hidden sm:inline">${hasPush ? '已訂閱推播' : '開啟推播通知'}</span>
           </button>
-          <button id="btn-open-pwa" class="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100" title="加入主畫面教學">
+          <button id="btn-open-pwa" class="p-1.5 rounded-xl glass-btn-subtle text-slate-600" title="加入主畫面教學">
             <i data-lucide="smartphone" class="w-4 h-4"></i>
           </button>
-          <button id="btn-global-help" class="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100" title="使用說明">
+          <button id="btn-global-help" class="p-1.5 rounded-xl glass-btn-subtle text-slate-600" title="使用說明">
             <i data-lucide="info" class="w-4 h-4"></i>
           </button>
-          <button id="btn-open-profile" class="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-medium text-slate-700 max-w-[96px] truncate">
+          <button id="btn-open-profile" class="px-2.5 py-1.5 rounded-xl glass-btn-subtle text-xs font-medium text-slate-700 max-w-[96px] truncate">
             ${esc(state.profile?.displayName || '成員')}
           </button>
         </div>
@@ -523,11 +554,11 @@ function renderTripList() {
     const myTotal = t.status === 'settled' ? (t.memberTotalExpenses?.[state.user.uid] ?? 0) : null;
     const members = (t.activeMemberIds || []).map((id) => memberName(t, id)).join('、');
 
-    return `
-      <div data-select-trip="${esc(t.id)}" class="cursor-pointer bg-white rounded-2xl border border-slate-200/90 hover:border-teal-400 hover:shadow-sm transition p-4 space-y-2.5">
+    const cardInner = `
+      <div data-select-trip="${esc(t.id)}" class="trip-swipe-card relative z-10 cursor-pointer bg-white rounded-2xl border border-slate-200/90 hover:border-teal-400 hover:shadow-sm transition-colors p-4 space-y-2.5">
         <div class="flex items-start justify-between gap-2">
-          <div>
-            <h3 class="font-bold text-slate-900 text-base">${esc(t.name)}</h3>
+          <div class="min-w-0">
+            <h3 class="font-bold text-slate-900 text-base truncate">${esc(t.name)}</h3>
             <p class="text-xs text-slate-500 mt-0.5">${esc(t.location)}｜${esc(t.startDate)} ～ ${esc(t.endDate)}</p>
           </div>
           ${statusBadge}
@@ -541,6 +572,18 @@ function renderTripList() {
         ` : ''}
       </div>
     `;
+
+    if (!isAdmin()) return cardInner;
+
+    return `
+      <div class="trip-swipe-wrap relative overflow-hidden rounded-2xl bg-rose-600" data-swipe-wrap="${esc(t.id)}">
+        <button type="button" data-delete-trip="${esc(t.id)}" class="absolute inset-y-0 right-0 w-[84px] flex flex-col items-center justify-center gap-1 text-white text-xs font-semibold bg-rose-600 active:bg-rose-700">
+          <i data-lucide="trash-2" class="w-4 h-4"></i>
+          <span>刪除</span>
+        </button>
+        ${cardInner}
+      </div>
+    `;
   };
 
   return `
@@ -551,7 +594,7 @@ function renderTripList() {
           <p class="text-xs text-slate-500 mt-0.5">點擊進入查看個人並行時間軸與分帳</p>
         </div>
         ${isAdmin() ? `
-          <button id="btn-create-trip" class="px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold flex items-center gap-1.5">
+          <button id="btn-create-trip" class="px-3.5 py-2 rounded-xl glass-btn-primary text-xs font-semibold flex items-center gap-1.5">
             <i data-lucide="plus" class="w-4 h-4"></i>建立旅行
           </button>
         ` : ''}
@@ -596,7 +639,7 @@ function renderTripDetail() {
       ${renderAccommodationBanner(trip, tonightStay)}
 
       <!-- 主功能分頁列 -->
-      <div class="grid ${isAdmin() ? 'grid-cols-4' : 'grid-cols-3'} gap-1 sm:gap-1.5 bg-white p-1.5 rounded-2xl border border-slate-200">
+      <div class="grid ${isAdmin() ? 'grid-cols-4' : 'grid-cols-3'} gap-1 sm:gap-1.5 glass-bar p-1.5 rounded-2xl">
         ${[
           { id: 'timeline', label: '行程時間軸', icon: 'calendar-clock' },
           { id: 'expenses', label: '帳務分帳', icon: 'receipt' },
@@ -604,14 +647,14 @@ function renderTripDetail() {
           ...(isAdmin() ? [{ id: 'admin', label: '管理員設定', icon: 'shield' }] : [])
         ].map((tab) => `
           <button data-tab="${tab.id}" class="min-w-0 py-2 px-1 sm:px-3 rounded-xl text-[11px] sm:text-sm font-semibold flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 whitespace-nowrap transition ${
-            state.activeTab === tab.id ? 'bg-teal-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+            state.activeTab === tab.id ? 'glass-btn-primary' : 'text-slate-600 hover:bg-white/60 active:scale-[0.97]'
           }">
             <i data-lucide="${tab.icon}" class="w-4 h-4 shrink-0"></i><span>${tab.label}</span>
           </button>
         `).join('')}
       </div>
 
-      <div>
+      <div class="${state.animateTab ? 'td-view-enter' : ''}">
         ${state.activeTab === 'timeline' ? renderTimelineTab(trip) : ''}
         ${state.activeTab === 'expenses' ? renderExpensesTab(trip) : ''}
         ${state.activeTab === 'settlement' ? renderSettlementTab(trip) : ''}
@@ -637,7 +680,7 @@ function renderSafeHomeBanner(trip) {
         </div>
         ${myCheckIn?.checkedIn
           ? `<span class="text-xs font-semibold text-emerald-700">✓ 你已報平安</span>`
-          : `<button id="btn-safe-home" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold">我平安到家了</button>`}
+          : `<button id="btn-safe-home" class="px-3.5 py-1.5 rounded-xl glass-btn-primary text-xs font-semibold">我平安到家了</button>`}
       </div>
       <div class="flex flex-wrap gap-1.5">
         ${activeIds.map((uid) => {
@@ -658,7 +701,7 @@ function renderAccommodationBanner(trip, stay) {
     return `
       <div class="bg-white rounded-2xl border border-dashed border-slate-300 px-4 py-3 flex items-center justify-between">
         <span class="text-xs text-slate-500">尚未設定住宿與分房資訊</span>
-        <button id="btn-add-room-shortcut" class="px-3 py-1.5 rounded-lg bg-teal-50 text-teal-700 hover:bg-teal-100 text-xs font-semibold">＋ 新增房號</button>
+        <button id="btn-add-room-shortcut" class="px-3 py-1.5 rounded-xl glass-btn-teal-soft text-xs font-semibold">＋ 新增房號</button>
       </div>
     `;
   }
@@ -680,7 +723,7 @@ function renderAccommodationBanner(trip, stay) {
         </p>
       </div>
       ${isAdmin() ? `
-        <button id="btn-add-room-shortcut" class="shrink-0 px-2.5 py-1.5 rounded-lg bg-teal-50 text-teal-700 hover:bg-teal-100 text-xs font-semibold">
+        <button id="btn-add-room-shortcut" class="shrink-0 px-3 py-1.5 rounded-xl glass-btn-teal-soft text-xs font-semibold">
           ＋ 新增房號
         </button>
       ` : ''}
@@ -711,7 +754,7 @@ function renderTimelineTab(trip) {
           <button data-help-section="3" class="p-2 rounded-xl bg-white border border-slate-200 text-slate-500 hover:text-teal-700" title="行程與時間軸說明">
             <i data-lucide="info" class="w-4 h-4"></i>
           </button>
-          <button id="btn-new-itinerary" class="px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold flex items-center gap-1">
+          <button id="btn-new-itinerary" class="px-3.5 py-2 rounded-xl glass-btn-primary text-xs font-semibold flex items-center gap-1">
             <i data-lucide="plus" class="w-3.5 h-3.5"></i>新增行程
           </button>
         </div>
@@ -908,9 +951,9 @@ function renderExpensesTab(trip) {
       <div class="flex items-center justify-between">
         <h3 class="text-sm font-bold text-slate-800">消費明細 ${state.expenses.length} 筆</h3>
         <div class="flex items-center gap-2">
-          ${state.expenses.length > 0 ? `<button id="btn-export-csv" class="px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50">匯出 CSV</button>` : ''}
+          ${state.expenses.length > 0 ? `<button id="btn-export-csv" class="px-3 py-2 rounded-xl glass-btn-subtle text-xs font-medium">匯出 CSV</button>` : ''}
           ${trip.status === 'active' ? `
-            <button id="btn-new-expense" class="px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold flex items-center gap-1">
+            <button id="btn-new-expense" class="px-3.5 py-2 rounded-xl glass-btn-primary text-xs font-semibold flex items-center gap-1">
               <i data-lucide="plus" class="w-3.5 h-3.5"></i>新增開銷
             </button>
           ` : `<span class="text-xs text-amber-700 font-medium">結帳收款中已凍結編輯</span>`}
@@ -1119,14 +1162,14 @@ function renderAdminTab(trip) {
             `;
           }).join('')}
         </div>
-        <button id="btn-save-members" class="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold">儲存歸戶名單</button>
+        <button id="btn-save-members" class="px-4 py-2 rounded-xl glass-btn-primary text-xs font-semibold">儲存歸戶名單</button>
       </div>
 
       <!-- 2. 按晚住宿與分房管理 -->
       <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
         <div class="flex items-center justify-between">
           <h3 class="text-sm font-bold text-slate-900">住宿按晚分房與房號</h3>
-          <button id="btn-manage-rooms" class="px-3 py-1.5 rounded-xl bg-teal-600 text-white text-xs font-semibold">＋ 新增房號</button>
+          <button id="btn-manage-rooms" class="px-3 py-1.5 rounded-xl glass-btn-primary text-xs font-semibold">＋ 新增房號</button>
         </div>
         <div class="space-y-2">
           ${dates.map((d, idx) => {
@@ -1142,6 +1185,15 @@ function renderAdminTab(trip) {
             `;
           }).join('')}
         </div>
+      </div>
+
+      <!-- 3. 刪除整趟旅行（僅管理員） -->
+      <div class="bg-white rounded-2xl border border-rose-200 p-4 flex items-center justify-between gap-3">
+        <div class="min-w-0">
+          <h3 class="text-sm font-bold text-rose-700">刪除整趟旅行</h3>
+          <p class="text-xs text-slate-500 mt-0.5">將一併清除所有行程、分帳、結算與報平安紀錄，無法復原</p>
+        </div>
+        <button id="btn-delete-current-trip" class="shrink-0 px-3.5 py-2 rounded-xl glass-btn-danger text-xs font-semibold">刪除此旅行</button>
       </div>
     </div>
   `;
@@ -1164,9 +1216,10 @@ function renderModal() {
   else if (type === 'expenseForm') body = renderExpenseFormModalContent(data);
   else if (type === 'archive') body = renderArchiveModalContent();
 
+  const isFreshOpen = state.lastModalType !== type;
   return `
-    <div id="modal-backdrop" class="fixed inset-0 z-50 bg-slate-900/45 backdrop-blur-[1px] flex items-end sm:items-center justify-center sm:p-4">
-      <div class="bg-white w-full sm:max-w-xl sm:rounded-3xl rounded-t-3xl max-h-[88vh] flex flex-col shadow-xl overflow-hidden">
+    <div id="modal-backdrop" class="fixed inset-0 z-50 bg-slate-900/45 backdrop-blur-[2px] flex items-end sm:items-center justify-center sm:p-4 ${isFreshOpen ? 'td-modal-backdrop-enter' : ''}">
+      <div id="modal-panel" class="bg-white w-full sm:max-w-xl sm:rounded-3xl rounded-t-3xl max-h-[88vh] flex flex-col shadow-2xl overflow-hidden ${isFreshOpen ? 'td-modal-panel-enter' : ''}">
         ${body}
       </div>
     </div>
@@ -1306,7 +1359,7 @@ function renderCreateTripModalContent() {
           </select>
         </div>
       </div>
-      <button type="submit" class="w-full py-2.5 rounded-xl bg-teal-600 text-white text-sm font-semibold">建立旅行</button>
+      <button type="submit" class="w-full py-2.5 rounded-xl glass-btn-primary text-sm font-semibold">建立旅行</button>
     </form>
   `;
 }
@@ -1419,7 +1472,7 @@ function renderAccommodationEditModalContent(data) {
         <span>同步套用至後續連住同飯店晚數</span>
       </label>
 
-      <button type="submit" class="w-full py-2.5 rounded-xl bg-teal-600 text-white text-sm font-semibold">儲存住宿分房</button>
+      <button type="submit" class="w-full py-2.5 rounded-xl glass-btn-primary text-sm font-semibold">儲存住宿分房</button>
     </form>
   `;
 }
@@ -1431,7 +1484,7 @@ function renderLinkedExpensesBox(trip, itineraryId, defaultTitle, linked) {
       <div class="flex items-center justify-between">
         <span class="text-xs font-semibold text-slate-700">你的相關款項${linked.total > 0 ? `：NT$${linked.total.toLocaleString()}` : ''}</span>
         ${trip.status === 'active' ? `
-          <button data-quick-expense="${esc(itineraryId)}" data-quick-title="${esc(defaultTitle)}" class="px-2.5 py-1 rounded-lg bg-teal-50 text-teal-700 hover:bg-teal-100 text-xs font-semibold">
+          <button data-quick-expense="${esc(itineraryId)}" data-quick-title="${esc(defaultTitle)}" class="px-2.5 py-1 rounded-xl glass-btn-teal-soft text-xs font-semibold">
             ＋ 記錄相關花費
           </button>
         ` : ''}
@@ -1720,7 +1773,7 @@ function renderItineraryFormModalContent(data) {
         <textarea name="description" rows="2" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm">${esc(editing?.description || '')}</textarea>
       </div>
 
-      <button type="submit" class="w-full py-2.5 rounded-xl bg-teal-600 text-white text-sm font-semibold">儲存行程</button>
+      <button type="submit" class="w-full py-2.5 rounded-xl glass-btn-primary text-sm font-semibold">儲存行程</button>
     </form>
   `;
 }
@@ -1895,7 +1948,7 @@ function renderExpenseFormModalContent(data) {
       ` : ''}
 
       <input data-exp-bind="note" value="${esc(d.note)}" placeholder="備註" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
-      <button type="submit" class="w-full py-2.5 rounded-xl bg-teal-600 text-white text-sm font-semibold">儲存開銷</button>
+      <button type="submit" class="w-full py-2.5 rounded-xl glass-btn-primary text-sm font-semibold">儲存開銷</button>
     </form>
   `;
 }
@@ -1914,7 +1967,7 @@ function renderArchiveModalContent() {
         <label class="block text-xs font-medium text-slate-600 mb-1">給全團成員的結算感謝詞</label>
         <textarea name="thankYouMessage" rows="3" required class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm">${esc(defaultMsg)}</textarea>
       </div>
-      <button type="submit" class="w-full py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold">匯出 CSV 並確認封存</button>
+      <button type="submit" class="w-full py-2.5 rounded-xl glass-btn-primary text-sm font-semibold">匯出 CSV 並確認封存</button>
     </form>
   `;
 }
@@ -1924,6 +1977,7 @@ function bindGlobalEvents() {
   document.getElementById('btn-back-trips')?.addEventListener('click', () => {
     clearTripDetailListeners();
     state.activeTripId = null;
+    state.animatePage = true;
     window.location.hash = '';
     render();
   });
@@ -1946,13 +2000,36 @@ function bindGlobalEvents() {
     render();
   });
   document.querySelectorAll('[data-select-trip]').forEach((el) => {
-    el.addEventListener('click', () => selectTrip(el.dataset.selectTrip));
+    el.addEventListener('click', () => {
+      if (el.dataset.swipeOpen === 'true') {
+        el.style.transition = 'transform 0.2s ease';
+        el.style.transform = 'translateX(0px)';
+        el.dataset.swipeOpen = 'false';
+        return;
+      }
+      if (el.dataset.justSwiped === 'true') {
+        el.dataset.justSwiped = 'false';
+        return;
+      }
+      selectTrip(el.dataset.selectTrip);
+    });
   });
+
+  document.querySelectorAll('[data-delete-trip]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      handleDeleteTrip(btn.dataset.deleteTrip);
+    });
+  });
+
+  if (isAdmin()) bindTripSwipeGestures();
 
   // 分頁與日期切換
   document.querySelectorAll('[data-tab]').forEach((btn) => {
     btn.addEventListener('click', () => {
+      if (state.activeTab === btn.dataset.tab) return;
       state.activeTab = btn.dataset.tab;
+      state.animateTab = true;
       if (state.activeTab === 'admin') loadAllUsersIfAdmin();
       render();
     });
@@ -2076,6 +2153,9 @@ function bindGlobalEvents() {
 
   // 管理員面板事件
   document.getElementById('btn-save-members')?.addEventListener('click', handleSaveMembers);
+  document.getElementById('btn-delete-current-trip')?.addEventListener('click', () => {
+    if (state.activeTripId) handleDeleteTrip(state.activeTripId);
+  });
   document.getElementById('btn-manage-rooms')?.addEventListener('click', () => {
     state.modal = { type: 'accommodationEdit', data: { stayDate: activeTrip().startDate } };
     render();
@@ -2125,15 +2205,9 @@ function openExpenseForm(editingExp = null, prefill = {}) {
 /* ============================= 彈窗互動事件 ============================= */
 function bindModalEvents() {
   if (!state.modal) return;
-  document.getElementById('btn-close-modal')?.addEventListener('click', () => {
-    state.modal = null;
-    render();
-  });
+  document.getElementById('btn-close-modal')?.addEventListener('click', closeModal);
   document.getElementById('modal-backdrop')?.addEventListener('click', (e) => {
-    if (e.target.id === 'modal-backdrop') {
-      state.modal = null;
-      render();
-    }
+    if (e.target.id === 'modal-backdrop') closeModal();
   });
 
   const { type, data } = state.modal;
@@ -2843,6 +2917,114 @@ async function handleSaveMembers() {
     updatedAt: serverTimestamp()
   });
   showToast('已更新歸戶成員名單', 'success');
+}
+
+function bindTripSwipeGestures() {
+  const MAX_SWIPE = 84;
+  const closeAllSwipes = (exceptEl = null) => {
+    document.querySelectorAll('.trip-swipe-card').forEach((card) => {
+      if (card !== exceptEl && card.dataset.swipeOpen === 'true') {
+        card.style.transition = 'transform 0.2s cubic-bezier(0.22, 1, 0.36, 1)';
+        card.style.transform = 'translateX(0px)';
+        card.dataset.swipeOpen = 'false';
+      }
+    });
+  };
+
+  document.querySelectorAll('.trip-swipe-card').forEach((card) => {
+    let startX = 0;
+    let startY = 0;
+    let baseOffset = 0;
+    let currentX = 0;
+    let isHorizontal = null;
+
+    card.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) return;
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      baseOffset = card.dataset.swipeOpen === 'true' ? -MAX_SWIPE : 0;
+      currentX = baseOffset;
+      isHorizontal = null;
+      card.style.transition = 'none';
+    }, { passive: true });
+
+    card.addEventListener('touchmove', (e) => {
+      if (e.touches.length !== 1) return;
+      const dx = e.touches[0].clientX - startX;
+      const dy = e.touches[0].clientY - startY;
+
+      if (isHorizontal === null) {
+        if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+          isHorizontal = Math.abs(dx) > Math.abs(dy) * 1.15;
+          if (isHorizontal) closeAllSwipes(card);
+        } else {
+          return;
+        }
+      }
+      if (!isHorizontal) return;
+
+      const next = Math.max(-MAX_SWIPE, Math.min(0, baseOffset + dx));
+      currentX = next;
+      card.style.transform = `translateX(${next}px)`;
+    }, { passive: true });
+
+    card.addEventListener('touchend', () => {
+      if (!isHorizontal) return;
+      card.style.transition = 'transform 0.2s cubic-bezier(0.22, 1, 0.36, 1)';
+      if (currentX <= -MAX_SWIPE / 2) {
+        card.style.transform = `translateX(-${MAX_SWIPE}px)`;
+        card.dataset.swipeOpen = 'true';
+      } else {
+        card.style.transform = 'translateX(0px)';
+        card.dataset.swipeOpen = 'false';
+      }
+      card.dataset.justSwiped = 'true';
+      setTimeout(() => { card.dataset.justSwiped = 'false'; }, 250);
+    }, { passive: true });
+  });
+}
+
+async function handleDeleteTrip(tripId) {
+  if (!isAdmin()) return;
+  const trip = state.trips.find((t) => t.id === tripId);
+  if (!trip) return;
+
+  const ok = window.confirm(
+    `確定永久刪除「${trip.name}」？\n此操作會一併清除所有行程、分帳、結算與報平安紀錄，且無法復原。`
+  );
+  if (!ok) return;
+
+  try {
+    showToast('正在刪除旅行與關聯資料...');
+    const subNames = ['itineraries', 'expenses', 'settlementTransfers', 'safeHomeCheckIns'];
+    const refsToDelete = [];
+
+    for (const sub of subNames) {
+      const snap = await getDocs(collection(db, 'trips', tripId, sub));
+      snap.docs.forEach((d) => refsToDelete.push(d.ref));
+    }
+
+    // 分批刪除子集合文件（單批上限 450 筆以符合 Firestore 500 限制）
+    for (let i = 0; i < refsToDelete.length; i += 450) {
+      const batch = writeBatch(db);
+      refsToDelete.slice(i, i + 450).forEach((ref) => batch.delete(ref));
+      await batch.commit();
+    }
+
+    await deleteDoc(doc(db, 'trips', tripId));
+
+    if (state.activeTripId === tripId) {
+      clearTripDetailListeners();
+      state.activeTripId = null;
+      state.animatePage = true;
+      window.location.hash = '';
+    }
+    showToast(`已刪除「${trip.name}」`, 'success');
+    render();
+  } catch (err) {
+    console.error(err);
+    showToast('刪除失敗，請確認管理員權限或網路連線', 'error');
+  }
 }
 
 /* ============================= 啟動認證監聽 ============================= */

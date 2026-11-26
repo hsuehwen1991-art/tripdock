@@ -6,12 +6,12 @@
 self.TRIPDOCK_CONFIG = {
   // === 1. Firebase Web App 設定（必填）===
   firebase: {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_PROJECT_ID.firebasestorage.app",
-    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-    appId: "YOUR_APP_ID"
+    apiKey: "AIzaSyADkCiyZy6YcUKuyP6njWXrkNgqbVUywUc",
+    authDomain: "tripdock-a6bd2.firebaseapp.com",
+    projectId: "tripdock-a6bd2",
+    storageBucket: "tripdock-a6bd2.firebasestorage.app",
+    messagingSenderId: "181629350989",
+    appId: "1:181629350989:web:7eb23cf8b9edad65e85804"
   },
 
   // === 2. Web Push VAPID 金鑰（選填，開啟推播通知時需要）===

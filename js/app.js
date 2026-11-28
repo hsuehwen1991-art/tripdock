@@ -49,6 +49,7 @@ let unsubForegroundMsg = null;
 let catAnimTimer = null;
 let catCurrentFrame = 0;
 let catClickLock = false;
+const pendingInviteReplyKeys = new Set();
 
 /* ============================= 工具函式 ============================= */
 const esc = (s) =>
@@ -127,6 +128,9 @@ function renderPushBanner() {
     const target = state.pushBanner;
     state.pushBanner = null;
     renderPushBanner();
+    if (target?.notifId) {
+      markNotificationReadById(target.notifId);
+    }
     navigateFromNotification(target);
   });
 }
@@ -265,27 +269,8 @@ function subscribeTrips(onFirstSnap = null) {
     state.trips = list;
     finishFirst();
 
-    // 檢查 URL hash 自動定位旅行、邀請回應或帳號管理彈窗
-    const hashStr = window.location.hash || '';
-    const hashMatch = hashStr.match(/trip=([^&]+)/);
-    const tabMatch = hashStr.match(/tab=([^&]+)/);
-    if (hashStr.includes('action=tripInvitation') && hashMatch && !state.modal) {
-      const inviteTripId = hashMatch[1];
-      window.location.hash = '';
-      const invNotif = (state.profile?.notifications || []).find(
-        (n) => n.targetType === 'tripInvitation' && n.tripId === inviteTripId
-      );
-      if (invNotif) {
-        state.modal = { type: 'tripInvitation', data: { notif: invNotif } };
-      }
-    } else if (!state.activeTripId && hashMatch && list.some((t) => t.id === hashMatch[1])) {
-      selectTrip(hashMatch[1], tabMatch ? tabMatch[1] : 'timeline');
-      return;
-    }
-    if (hashStr.includes('action=deletionReview') && isAdmin() && !state.modal) {
-      window.location.hash = '';
-      state.modal = { type: 'accountManagement', data: {} };
-    }
+    // 檢查 URL hash 自動定位旅行、邀請回應、帳號管理並同步已讀角標
+    if (handleHashRoute()) return;
     if (state.activeTripId && !list.some((t) => t.id === state.activeTripId)) {
       state.activeTripId = null;
       clearTripDetailListeners();
@@ -398,7 +383,12 @@ async function setupForegroundMessaging() {
     const body = payload?.notification?.body || payload?.data?.body || '';
     const targetType = payload?.data?.targetType || '';
     const tripId = payload?.data?.tripId || '';
-    showPushBanner({ title, body, targetType, tripId });
+    const notifId = payload?.data?.notifId || '';
+    const rawBadge = payload?.data?.badgeCount ?? payload?.data?.unreadCount;
+    if (rawBadge !== undefined && rawBadge !== '') {
+      syncAppBadge(Number(rawBadge));
+    }
+    showPushBanner({ title, body, targetType, tripId, notifId });
   });
 }
 
@@ -556,29 +546,135 @@ async function navigateFromNotification(notif) {
   }
 }
 
+function getUnreadNotificationCount() {
+  if (!state.user || !state.profile) return 0;
+  const list = Array.isArray(state.profile.notifications) ? state.profile.notifications : [];
+  return list.filter((n) => !n.read).length;
+}
+
+function syncAppBadge(explicitCount = null) {
+  try {
+    const count = explicitCount !== null ? Number(explicitCount) : getUnreadNotificationCount();
+    if (!Number.isFinite(count) || count <= 0) {
+      if (typeof navigator.clearAppBadge === 'function') {
+        navigator.clearAppBadge().catch(() => {});
+      } else if (typeof navigator.setAppBadge === 'function') {
+        navigator.setAppBadge(0).catch(() => {});
+      }
+    } else if (typeof navigator.setAppBadge === 'function') {
+      navigator.setAppBadge(count).catch(() => {});
+    }
+  } catch {}
+}
+
+async function markNotificationReadById(notifId) {
+  if (!notifId || !state.user) return;
+  const list = Array.isArray(state.profile?.notifications) ? state.profile.notifications : [];
+  const target = list.find((n) => n.id === notifId);
+  if (!target || target.read) {
+    syncAppBadge();
+    return;
+  }
+  const nextList = list.map((n) => (n.id === notifId ? { ...n, read: true } : n));
+  state.profile.notifications = nextList;
+  syncAppBadge();
+  try {
+    await updateDoc(doc(db, 'users', state.user.uid), {
+      notifications: nextList,
+      updatedAt: serverTimestamp()
+    });
+  } catch {}
+}
+
+function handleHashRoute() {
+  if (!state.user) return false;
+  const hashStr = window.location.hash || '';
+  if (!hashStr || hashStr === '#') return false;
+
+  const hashMatch = hashStr.match(/trip=([^&]+)/);
+  const tabMatch = hashStr.match(/tab=([^&]+)/);
+  const notifMatch = hashStr.match(/notif=([^&]+)/);
+  const notifId = notifMatch ? decodeURIComponent(notifMatch[1]) : '';
+
+  if (notifId) {
+    markNotificationReadById(notifId);
+  }
+
+  if (hashStr.includes('action=tripInvitation') && hashMatch) {
+    const inviteTripId = decodeURIComponent(hashMatch[1]);
+    window.location.hash = '';
+    const invNotif = (state.profile?.notifications || []).find(
+      (n) => (notifId && n.id === notifId) || (n.targetType === 'tripInvitation' && n.tripId === inviteTripId)
+    );
+    if (invNotif && (!state.modal || state.modal.type !== 'tripInvitation')) {
+      state.modal = { type: 'tripInvitation', data: { notif: invNotif } };
+      render();
+      return true;
+    }
+    return false;
+  }
+
+  if (hashStr.includes('action=deletionReview') && isAdmin()) {
+    window.location.hash = '';
+    if (!state.modal || state.modal.type !== 'accountManagement') {
+      loadAllUsersIfAdmin().catch(() => {});
+      state.modal = { type: 'accountManagement', data: {} };
+      render();
+      return true;
+    }
+    return false;
+  }
+
+  if (hashStr.includes('action=profile')) {
+    window.location.hash = '';
+    if (!state.modal || state.modal.type !== 'profile') {
+      state.modal = { type: 'profile', data: {} };
+      render();
+      return true;
+    }
+    return false;
+  }
+
+  if (hashMatch) {
+    const targetTripId = decodeURIComponent(hashMatch[1]);
+    const targetTab = tabMatch ? decodeURIComponent(tabMatch[1]) : 'timeline';
+    if (state.trips.some((t) => t.id === targetTripId)) {
+      if (state.activeTripId !== targetTripId) {
+        selectTrip(targetTripId, targetTab);
+        return true;
+      }
+      if (notifId) {
+        if (state.activeTab !== targetTab) {
+          state.activeTab = targetTab;
+          state.animateTab = true;
+        }
+        window.location.hash = state.activeTab === 'timeline' ? `trip=${targetTripId}` : `trip=${targetTripId}&tab=${state.activeTab}`;
+        render();
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 async function handleClickNotification(notifId) {
   const list = Array.isArray(state.profile?.notifications) ? state.profile.notifications : [];
   const target = list.find((n) => n.id === notifId);
   if (!target) return;
 
-  if (!target.read) {
-    const nextList = list.map((n) => (n.id === notifId ? { ...n, read: true } : n));
-    state.profile.notifications = nextList;
-    try {
-      await updateDoc(doc(db, 'users', state.user.uid), {
-        notifications: nextList,
-        updatedAt: serverTimestamp()
-      });
-    } catch {}
-  }
+  await markNotificationReadById(notifId);
   await navigateFromNotification(target);
 }
 
 async function handleMarkAllNotifsRead() {
   const list = Array.isArray(state.profile?.notifications) ? state.profile.notifications : [];
-  if (!list.some((n) => !n.read)) return;
+  if (!list.some((n) => !n.read)) {
+    syncAppBadge(0);
+    return;
+  }
   const nextList = list.map((n) => ({ ...n, read: true }));
   state.profile.notifications = nextList;
+  syncAppBadge(0);
   await updateDoc(doc(db, 'users', state.user.uid), {
     notifications: nextList,
     updatedAt: serverTimestamp()
@@ -590,6 +686,7 @@ async function handleClearReadNotifs() {
   const list = Array.isArray(state.profile?.notifications) ? state.profile.notifications : [];
   const nextList = list.filter((n) => !n.read);
   state.profile.notifications = nextList;
+  syncAppBadge();
   await updateDoc(doc(db, 'users', state.user.uid), {
     notifications: nextList,
     updatedAt: serverTimestamp()
@@ -1992,11 +2089,15 @@ function renderAdminDeleteAccountModalContent(data) {
 
 /* ----------------------------- Modal: 成員回應旅行參加邀請 ----------------------------- */
 function renderTripInvitationModalContent(data) {
-  const notif = data?.notif;
+  const rawNotif = data?.notif;
+  const notif = (state.profile?.notifications || []).find(
+    (n) => (rawNotif?.id && n.id === rawNotif.id) || (n.targetType === 'tripInvitation' && n.tripId === rawNotif?.tripId)
+  ) || rawNotif;
   if (!notif) {
     return `${modalHeader('旅行參加邀請')}<div class="p-5 text-xs text-slate-500">找不到邀請資訊</div>`;
   }
   const isPending = notif.inviteStatus === 'pending';
+  const isSubmitting = pendingInviteReplyKeys.has(notif.tripId);
 
   return `
     ${modalHeader('旅行參加邀請')}
@@ -2012,8 +2113,8 @@ function renderTripInvitationModalContent(data) {
       ${isPending ? `
         <p class="text-xs text-slate-500">確認參加後，這趟旅行會立即出現在你的首頁清單，並開放查看行程與分帳。</p>
         <div class="grid grid-cols-2 gap-2.5 pt-1">
-          <button type="button" data-modal-invite-reply="decline" class="py-2.5 rounded-xl glass-btn-subtle text-xs font-semibold">婉拒邀請</button>
-          <button type="button" data-modal-invite-reply="accept" class="py-2.5 rounded-xl glass-btn-primary text-xs font-semibold">確認參加</button>
+          <button type="button" data-modal-invite-reply="decline" ${isSubmitting ? 'disabled' : ''} class="py-2.5 rounded-xl glass-btn-subtle text-xs font-semibold ${isSubmitting ? 'opacity-60 cursor-not-allowed' : ''}">${isSubmitting ? '處理中...' : '婉拒邀請'}</button>
+          <button type="button" data-modal-invite-reply="accept" ${isSubmitting ? 'disabled' : ''} class="py-2.5 rounded-xl glass-btn-primary text-xs font-semibold ${isSubmitting ? 'opacity-60 cursor-not-allowed' : ''}">${isSubmitting ? '處理中...' : '確認參加'}</button>
         </div>
       ` : `
         <div class="p-3 rounded-xl bg-slate-100 text-xs text-slate-600 text-center font-medium">
@@ -2076,12 +2177,15 @@ function renderNotificationCenterModalContent() {
                   </div>
                   <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-slate-400 shrink-0 mt-1"></i>
                 </div>
-                ${isPendingInvite ? `
+                ${isPendingInvite ? (() => {
+                  const isSubmitting = pendingInviteReplyKeys.has(n.tripId);
+                  return `
                   <div class="flex items-center justify-end gap-2 pl-4">
-                    <button type="button" data-invite-reply="decline" data-invite-trip="${esc(n.tripId)}" data-invite-notif="${esc(n.id)}" class="px-3 py-1.5 rounded-xl glass-btn-subtle text-xs font-semibold">婉拒</button>
-                    <button type="button" data-invite-reply="accept" data-invite-trip="${esc(n.tripId)}" data-invite-notif="${esc(n.id)}" class="px-3.5 py-1.5 rounded-xl glass-btn-primary text-xs font-semibold">確認參加</button>
+                    <button type="button" data-invite-reply="decline" data-invite-trip="${esc(n.tripId)}" data-invite-notif="${esc(n.id)}" ${isSubmitting ? 'disabled' : ''} class="px-3 py-1.5 rounded-xl glass-btn-subtle text-xs font-semibold ${isSubmitting ? 'opacity-60 cursor-not-allowed' : ''}">${isSubmitting ? '處理中...' : '婉拒'}</button>
+                    <button type="button" data-invite-reply="accept" data-invite-trip="${esc(n.tripId)}" data-invite-notif="${esc(n.id)}" ${isSubmitting ? 'disabled' : ''} class="px-3.5 py-1.5 rounded-xl glass-btn-primary text-xs font-semibold ${isSubmitting ? 'opacity-60 cursor-not-allowed' : ''}">${isSubmitting ? '處理中...' : '確認參加'}</button>
                   </div>
-                ` : ''}
+                `;
+                })() : ''}
               </div>
             `;
           }).join('')}
@@ -4042,16 +4146,28 @@ async function handleRemoveTripMember(tripId, targetUid) {
 
 async function handleRespondTripInvitation(tripId, decision, notifId) {
   if (!tripId || (decision !== 'accept' && decision !== 'decline')) return;
+  if (pendingInviteReplyKeys.has(tripId)) return;
   if (!cfg.gasBridgeUrl) {
     showToast('推播跳板未就緒，無法回應邀請', 'error');
     return;
   }
+  pendingInviteReplyKeys.add(tripId);
+  render();
   try {
     showToast(decision === 'accept' ? '正在確認加入旅行...' : '正在回覆婉拒邀請...');
     const res = await callGasBridge('respondTripInvitation', { tripId, decision, notifId });
     if (!res.ok) {
       showToast(res.error || '回應邀請失敗', 'error');
       return;
+    }
+    // 立即同步本地通知狀態與桌面未讀數字，不需等待快照延遲
+    if (Array.isArray(state.profile?.notifications)) {
+      const nextStatus = decision === 'accept' ? 'accepted' : 'declined';
+      state.profile.notifications = state.profile.notifications.map((n) => {
+        const isMatch = (notifId && n.id === notifId) || (n.targetType === 'tripInvitation' && n.tripId === tripId);
+        return isMatch ? { ...n, read: true, inviteStatus: nextStatus } : n;
+      });
+      syncAppBadge();
     }
     if (state.modal?.type === 'tripInvitation') {
       closeModal();
@@ -4060,6 +4176,9 @@ async function handleRespondTripInvitation(tripId, decision, notifId) {
   } catch (err) {
     console.error(err);
     showToast('回應邀請發生錯誤，請稍後再試', 'error');
+  } finally {
+    pendingInviteReplyKeys.delete(tripId);
+    render();
   }
 }
 
@@ -4292,10 +4411,19 @@ async function handleReviewAccountDeletion(targetUid, decision) {
 
 /* ============================= 系統通知權限即時同步 ============================= */
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && state.user && !state.modal) render();
+  if (!document.hidden && state.user) {
+    syncAppBadge();
+    if (!state.modal) render();
+  }
 });
 window.addEventListener('focus', () => {
-  if (state.user && !state.modal) render();
+  if (state.user) {
+    syncAppBadge();
+    if (!state.modal) render();
+  }
+});
+window.addEventListener('hashchange', () => {
+  if (state.user) handleHashRoute();
 });
 if (navigator.permissions && navigator.permissions.query) {
   navigator.permissions.query({ name: 'notifications' }).then((status) => {
@@ -4322,6 +4450,7 @@ if (isConfigured) {
     if (!user) {
       state.profile = null;
       state.trips = [];
+      syncAppBadge(0);
       if (unsubTrips) { try { unsubTrips(); } catch {} unsubTrips = null; }
       render();
       await guidePreloadPromise;
@@ -4347,10 +4476,13 @@ if (isConfigured) {
       await setDoc(userRef, { ...state.profile, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
     }
 
-    // 即時監聽個人文件，讓通知中心與權限狀態即時同步
+    syncAppBadge();
+
+    // 即時監聽個人文件，讓通知中心、桌面未讀角標與權限狀態即時同步
     unsubProfile = onSnapshot(userRef, (docSnap) => {
       if (docSnap.exists()) {
         state.profile = docSnap.data();
+        syncAppBadge();
         render();
       }
     });
